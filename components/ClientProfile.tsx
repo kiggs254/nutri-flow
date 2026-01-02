@@ -1,0 +1,1139 @@
+
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ArrowLeft, Calendar as CalendarIcon, Activity, FileText, CreditCard, 
+  Camera, Brain, User, Plus, Trash2, Send, CheckCircle,
+  ChevronLeft, ChevronRight, X, Mail, Loader2, Edit2, MapPin, DollarSign,
+  Share2, Copy, MessageSquare, Dumbbell, Droplet, RefreshCw, AlertTriangle,
+  HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp
+} from 'lucide-react';
+import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
+import { supabase } from '../services/supabase';
+import { analyzeFoodImage, generateClientInsights } from '../services/geminiService';
+
+interface ClientProfileProps {
+  client: Client;
+  onBack: () => void;
+  onUpdateClient: (updatedClient: Client) => void;
+  initialTab?: 'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'medical';
+}
+
+const getCurrencySymbol = (currencyCode?: string): string => {
+  if (!currencyCode) return '$';
+  switch (currencyCode.toUpperCase()) {
+    case 'USD': return '$';
+    case 'KES': return 'KSh';
+    case 'NGN': return '₦';
+    case 'GHS': return 'GH₵';
+    default: return '$';
+  }
+};
+
+
+// Internal Meal Plan Card Component
+const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => void}> = ({ plan, onDelete }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (!plan.planData) return null;
+
+  const MealDetail: React.FC<{meal: Meal, type: string}> = ({meal, type}) => {
+    if (!meal) return null;
+    const icon = type === 'Breakfast' ? '🍳' : type === 'Lunch' ? '🥗' : '🍽️';
+    return (
+        <div className="flex gap-3 items-start">
+            <span className="text-xl mt-1">{icon}</span>
+            <div>
+                <p className="font-bold text-slate-700">{meal.name}</p>
+                <p className="text-xs text-slate-500">{meal.ingredients?.join(', ')}</p>
+                <div className="text-xs text-slate-400 mt-1">{meal.calories}kcal • P:{meal.protein} C:{meal.carbs} F:{meal.fats}</div>
+            </div>
+        </div>
+    );
+  };
+  
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50" onClick={() => setIsExpanded(!isExpanded)}>
+            <div>
+                <p className="font-bold text-[#8C3A36]">{plan.label || `Plan from ${new Date(plan.createdAt).toLocaleDateString()}`}</p>
+                <p className="text-xs text-slate-500">Created on {new Date(plan.createdAt).toLocaleString()}</p>
+            </div>
+            <div className="flex items-center gap-2">
+                <button onClick={(e) => { e.stopPropagation(); onDelete(plan.id);}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 className="w-4 h-4"/></button>
+                {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-500"/> : <ChevronDown className="w-5 h-5 text-slate-500"/>}
+            </div>
+        </div>
+        {isExpanded && (
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-4 max-h-96 overflow-y-auto">
+                {plan.planData.map((day: DailyPlan) => (
+                    <div key={day.day} className="p-3 bg-white rounded-lg border">
+                        <div className="flex justify-between items-center mb-2">
+                           <h4 className="font-bold text-slate-800">{day.day}</h4>
+                           <span className="text-xs font-bold text-[#8C3A36] bg-[#F9F5F5] px-2 py-0.5 rounded-full">{day.totalCalories} kcal</span>
+                        </div>
+                        <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                            <MealDetail meal={day.breakfast} type="Breakfast"/>
+                            <MealDetail meal={day.lunch} type="Lunch"/>
+                            <MealDetail meal={day.dinner} type="Dinner"/>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+  );
+};
+
+
+const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateClient, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'medical'>(initialTab || 'overview');
+  const [loading, setLoading] = useState(false);
+  
+  const [mealPlans, setMealPlans] = useState<SavedMealPlan[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [foodLogs, setFoodLogs] = useState<FoodLog[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [aiInsight, setAiInsight] = useState<string>("");
+  const [generatingInsight, setGeneratingInsight] = useState(false);
+
+  const [showShareModal, setShowShareModal] = useState(false);
+  const portalLink = `${window.location.origin}/#/portal/${client.portalAccessToken}`;
+  const [copied, setCopied] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const [foodImage, setFoodImage] = useState<File | null>(null);
+  const [foodAnalysis, setFoodAnalysis] = useState<string>("");
+  const [analyzingFood, setAnalyzingFood] = useState(false);
+
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [showApptModal, setShowApptModal] = useState(false);
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [isDragging, setIsDragging] = useState<string | null>(null); 
+  const [savingAppt, setSavingAppt] = useState(false);
+  
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    items: [{ description: 'Nutrition Consultation', cost: 150 }]
+  });
+  
+  const [showInvoiceActionModal, setShowInvoiceActionModal] = useState(false);
+  const [selectedInvoiceAction, setSelectedInvoiceAction] = useState<Invoice | null>(null);
+  const [copiedPaymentLink, setCopiedPaymentLink] = useState(false);
+
+  const [apptForm, setApptForm] = useState({
+    date: '',
+    time: '09:00',
+    type: 'Check-in' as Appointment['type'],
+    status: 'Confirmed' as Appointment['status'],
+    notes: ''
+  });
+
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Medical Tab State
+  const [medicalInfo, setMedicalInfo] = useState({
+    medicalHistory: client.medicalHistory || '',
+    allergies: client.allergies || '',
+    medications: client.medications || '',
+    dietaryHistory: client.dietaryHistory || '',
+  });
+  const [medicalDocuments, setMedicalDocuments] = useState<MedicalDocument[]>([]);
+  const [isSavingMedicalInfo, setIsSavingMedicalInfo] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [billingSettings, setBillingSettings] = useState<Partial<BillingSettings>>({ currency: 'USD' });
+
+
+  useEffect(() => {
+    setActiveTab(initialTab || 'overview');
+  }, [initialTab, client.id]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
+      const [plansRes, apptsRes, foodsRes, invRes, msgRes, docsRes, settingsRes] = await Promise.all([
+          supabase.from('meal_plans').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+          supabase.from('appointments').select('*').eq('client_id', client.id).order('date', { ascending: true }),
+          supabase.from('food_logs').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+          supabase.from('invoices').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+          supabase.from('messages').select('*').eq('client_id', client.id).order('created_at', { ascending: true }),
+          supabase.from('medical_documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+          supabase.from('billing_settings').select('*').eq('user_id', user.id).single(),
+      ]);
+      if (plansRes.data) setMealPlans(plansRes.data.map(p => ({
+        id: p.id, clientId: p.client_id, createdAt: p.created_at, planData: p.plan_data, label: p.day_label || 'Weekly Plan'
+      })));
+      if (apptsRes.data) setAppointments(apptsRes.data.map(a => ({
+        id: a.id, clientId: a.client_id, date: a.date, type: a.type, status: a.status, notes: a.notes
+      })));
+      if (foodsRes.data) setFoodLogs(foodsRes.data.map(f => ({
+         id: f.id, clientId: f.client_id, aiAnalysis: f.ai_analysis, createdAt: f.created_at, imageUrl: f.image_url, notes: f.notes
+      })));
+      if (invRes.data) setInvoices(invRes.data.map(i => ({
+        id: i.id, clientId: i.client_id, amount: i.amount, currency: i.currency, status: i.status, dueDate: i.due_date, generatedAt: i.created_at, items: i.items || [], paymentMethod: i.payment_method, transactionRef: i.transaction_ref
+      })));
+      if (msgRes.data) setMessages(msgRes.data.map((msg: any): Message => ({
+        id: msg.id, clientId: msg.client_id, sender: msg.sender, content: msg.content, createdAt: msg.created_at, isRead: msg.is_read
+      })));
+      if (docsRes.data) setMedicalDocuments(docsRes.data.map((doc: any): MedicalDocument => ({
+        id: doc.id, clientId: doc.client_id, uploadedAt: doc.created_at, fileName: doc.file_name, filePath: doc.file_path
+      })));
+      if (settingsRes.data) {
+        setBillingSettings(settingsRes.data);
+      }
+
+
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+
+    const channel = supabase.channel(`messages-${client.id}`)
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `client_id=eq.${client.id}` },
+        (payload) => {
+          const rawMsg = payload.new;
+          const newMessage: Message = {
+            id: rawMsg.id,
+            clientId: rawMsg.client_id,
+            sender: rawMsg.sender,
+            content: rawMsg.content,
+            createdAt: rawMsg.created_at,
+            isRead: rawMsg.is_read,
+          };
+          
+          setMessages(prevMessages => {
+            if (!prevMessages.some(m => m.id === newMessage.id)) {
+              return [...prevMessages, newMessage];
+            }
+            return prevMessages;
+          });
+        }
+      ).subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [client.id]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'messages') {
+      const markAsRead = async () => {
+        await supabase.from('messages')
+          .update({ is_read: true })
+          .eq('client_id', client.id)
+          .eq('sender', 'client');
+      };
+      markAsRead();
+    }
+  }, [activeTab, client.id]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+    const content = newMessage.trim();
+    setNewMessage('');
+
+    const optimisticMessage: Message = {
+      id: `temp_${Date.now()}`,
+      clientId: client.id,
+      sender: 'nutritionist',
+      content,
+      createdAt: new Date().toISOString(),
+      isRead: true
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    try {
+      const { data, error } = await supabase.from('messages').insert({
+        client_id: client.id,
+        sender: 'nutritionist',
+        content: content
+      }).select().single();
+
+      if (error) throw error;
+      
+      const finalMessage: Message = {
+        id: data.id,
+        clientId: data.client_id,
+        sender: data.sender,
+        content: data.content,
+        createdAt: data.created_at,
+        isRead: data.is_read
+      };
+
+      setMessages(prev => prev.map(m => m.id === optimisticMessage.id ? finalMessage : m));
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+      setNewMessage(content);
+    }
+  };
+
+  const handleGenerateInvoice = () => {
+    setInvoiceForm({
+       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+       items: [{ description: 'Nutrition Consultation', cost: 150 }]
+    });
+    setShowInvoiceModal(true);
+  };
+  
+  const handleOpenInvoiceActions = (invoice: Invoice) => {
+    setSelectedInvoiceAction(invoice);
+    setShowInvoiceActionModal(true);
+  };
+  
+  const handleMarkAsPaid = async () => {
+    if (!selectedInvoiceAction) return;
+    try {
+        const { error } = await supabase
+            .from('invoices')
+            .update({ status: 'Paid', payment_method: 'Manual' })
+            .eq('id', selectedInvoiceAction.id);
+        if (error) throw error;
+        fetchData();
+        setShowInvoiceActionModal(false);
+    } catch (err: any) {
+        alert("Failed to update invoice: " + err.message);
+    }
+  };
+
+  const handleAddInvoiceItem = () => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      items: [...prev.items, { description: '', cost: 0 }]
+    }));
+  };
+
+  const handleRemoveInvoiceItem = (index: number) => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateInvoiceItem = (index: number, field: 'description' | 'cost', value: string) => {
+    const newItems = [...invoiceForm.items];
+    newItems[index] = { ...newItems[index], [field]: field === 'cost' ? parseFloat(value) || 0 : value };
+    setInvoiceForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleSaveInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingInvoice(true);
+    const totalAmount = invoiceForm.items.reduce((acc, item) => acc + item.cost, 0);
+
+    try {
+      const { error } = await supabase.from('invoices').insert({
+        client_id: client.id,
+        due_date: invoiceForm.dueDate,
+        items: invoiceForm.items,
+        amount: totalAmount,
+        currency: billingSettings.currency || 'USD',
+        status: 'Pending',
+      });
+      if (error) throw error;
+      setShowInvoiceModal(false);
+      fetchData(); // Refresh invoices
+    } catch (err: any) {
+      alert("Error creating invoice: " + err.message);
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
+  const handleSaveAppt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAppt(true);
+
+    const newAppointmentData = {
+      client_id: client.id,
+      date: `${apptForm.date}T${apptForm.time}:00`,
+      type: apptForm.type,
+      status: apptForm.status,
+      notes: apptForm.notes,
+    };
+
+    try {
+      let error;
+      if (selectedAppt) {
+        ({ error } = await supabase.from('appointments').update(newAppointmentData).eq('id', selectedAppt.id));
+      } else {
+        ({ error } = await supabase.from('appointments').insert(newAppointmentData));
+      }
+      if (error) throw error;
+      setShowApptModal(false);
+      setSelectedAppt(null);
+      fetchData(); // Refresh appointments
+    } catch (err: any) {
+      alert("Error saving appointment: " + err.message);
+    } finally {
+      setSavingAppt(false);
+    }
+  };
+
+  const handleDeleteAppointment = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this appointment?')) return;
+    try {
+      const { error } = await supabase.from('appointments').delete().eq('id', id);
+      if (error) throw error;
+      setShowApptModal(false);
+      setSelectedAppt(null);
+      fetchData();
+    } catch (e: any) {
+      alert("Error deleting appointment: " + e.message);
+    }
+  };
+
+  const handleOpenApptModal = (dateStr: string, appt: Appointment | null = null) => {
+    if (appt) {
+      setSelectedAppt(appt);
+      const apptDate = new Date(appt.date);
+      setApptForm({
+        date: apptDate.toISOString().split('T')[0],
+        time: apptDate.toTimeString().substring(0, 5),
+        type: appt.type,
+        status: appt.status,
+        notes: appt.notes || '',
+      });
+    } else {
+      setSelectedAppt(null);
+      setApptForm({
+        date: dateStr,
+        time: '09:00',
+        type: 'Check-in',
+        status: 'Confirmed',
+        notes: '',
+      });
+    }
+    setShowApptModal(true);
+  };
+  
+  const handleGenerateInsight = async () => {
+    setGeneratingInsight(true);
+    setAiInsight("");
+    try {
+      const { data } = await supabase.from('progress_logs').select('weight').eq('client_id', client.id).order('date', {ascending: true}).limit(5);
+      const weightHistory = data ? data.map(d => d.weight) : [client.weight || 0];
+      const result = await generateClientInsights(client.name, weightHistory, client.goal);
+      setAiInsight(result);
+    } catch (e) {
+      setAiInsight("Could not generate insights at this time.");
+    } finally {
+      setGeneratingInsight(false);
+    }
+  };
+  
+  const handleAnalyzeFood = async () => {
+    if (!foodImage) return;
+    setAnalyzingFood(true);
+    setFoodAnalysis("");
+
+    try {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64String = (reader.result as string).split(',')[1];
+            const result = await analyzeFoodImage(base64String, foodImage.type, null, client.goal);
+            setFoodAnalysis(result);
+            // Optionally save this log
+            const { error } = await supabase.from('food_logs').insert({
+                client_id: client.id,
+                ai_analysis: result,
+                // you would need to upload the image to storage and save the URL here
+            });
+            if (error) console.error("Error saving food log", error);
+        };
+        reader.readAsDataURL(foodImage);
+
+    } catch(e) {
+        setFoodAnalysis("Failed to analyze image.");
+    } finally {
+        setAnalyzingFood(false);
+    }
+  };
+
+  const handleDeleteMealPlan = async (planId: string) => {
+    if (!confirm('Are you sure you want to delete this meal plan? This action cannot be undone.')) return;
+    try {
+      const { error } = await supabase.from('meal_plans').delete().eq('id', planId);
+      if (error) throw error;
+      fetchData(); // Refresh the list of meal plans
+    } catch (e: any) {
+      alert("Error deleting meal plan: " + e.message);
+    }
+  };
+  
+  // -- Medical Tab Handlers --
+  const handleSaveMedicalInfo = async () => {
+    setIsSavingMedicalInfo(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .update({
+          medical_history: medicalInfo.medicalHistory,
+          allergies: medicalInfo.allergies,
+          medications: medicalInfo.medications,
+          dietary_history: medicalInfo.dietaryHistory,
+        })
+        .eq('id', client.id)
+        .select()
+        .single();
+      if (error) throw error;
+      
+      const updatedClient: Client = {
+        ...client,
+        medicalHistory: data.medical_history,
+        allergies: data.allergies,
+        medications: data.medications,
+        dietaryHistory: data.dietary_history,
+      };
+      onUpdateClient(updatedClient);
+      alert('Medical info updated!');
+    } catch (e: any) {
+      alert('Error saving medical info: ' + e.message);
+    } finally {
+      setIsSavingMedicalInfo(false);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!fileToUpload) return;
+    setIsUploading(true);
+    try {
+      const filePath = `${client.id}/${fileToUpload.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('medical_documents')
+        .upload(filePath, fileToUpload);
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase.from('medical_documents').insert({
+        client_id: client.id,
+        file_name: fileToUpload.name,
+        file_path: filePath,
+      });
+      if (dbError) throw dbError;
+
+      setFileToUpload(null);
+      fetchData(); // Refresh documents
+    } catch (e: any) {
+      alert('File upload failed: ' + e.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDownloadFile = async (filePath: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage.from('medical_documents').download(filePath);
+      if (error) throw error;
+      const blob = new Blob([data]);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e: any) {
+      alert('Download failed: ' + e.message);
+    }
+  };
+  
+  const handleDeleteFile = async (doc: MedicalDocument) => {
+    if (!confirm(`Are you sure you want to delete ${doc.fileName}?`)) return;
+    try {
+      const { error: storageError } = await supabase.storage.from('medical_documents').remove([doc.filePath]);
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await supabase.from('medical_documents').delete().eq('id', doc.id);
+      if (dbError) throw dbError;
+
+      fetchData(); // Refresh documents
+    } catch (e: any) {
+      alert('Delete failed: ' + e.message);
+    }
+  };
+  
+  const handleRegenerateLink = async () => {
+    if (!confirm('Are you sure you want to regenerate the access link? The old link will stop working immediately.')) return;
+    setRegenerating(true);
+    try {
+      const newAccessToken = crypto.randomUUID();
+      const { data, error } = await supabase
+        .from('clients')
+        .update({ portal_access_token: newAccessToken })
+        .eq('id', client.id)
+        .select('portal_access_token')
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        onUpdateClient({ ...client, portalAccessToken: data.portal_access_token });
+        alert('Client portal link has been regenerated.');
+      }
+    } catch (err: any) {
+      alert('Failed to regenerate link: ' + err.message);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+
+  const tabItems = [
+    { id: 'overview', label: 'Overview', icon: User },
+    { id: 'meal_plans', label: 'Meal Plans', icon: FileText },
+    { id: 'food', label: 'Food Logs', icon: Camera },
+    { id: 'messages', label: 'Messages', icon: MessageSquare },
+    { id: 'medical', label: 'Medical', icon: HeartPulse },
+    { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
+  ];
+
+  const StatCard: React.FC<{ label: string; value: string | number; unit?: string; icon: React.ReactNode }> = ({ label, value, unit, icon }) => (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex items-center gap-4">
+      <div className="p-2 bg-white rounded-full shadow-sm">{icon}</div>
+      <div>
+        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
+        <p className="text-xl font-bold text-slate-800">
+          {value} <span className="text-sm font-normal text-slate-500">{unit}</span>
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <div className="space-y-6">
+             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+               <StatCard label="Age" value={client.age ?? 'N/A'} unit="yrs" icon={<User className="w-5 h-5 text-[#8C3A36]" />} />
+               <StatCard label="Weight" value={client.weight ?? 'N/A'} unit="kg" icon={<Activity className="w-5 h-5 text-[#8C3A36]" />} />
+               <StatCard label="Body Fat" value={client.bodyFatPercentage ?? 'N/A'} unit="%" icon={<Droplet className="w-5 h-5 text-rose-500" />} />
+               <StatCard label="Muscle Mass" value={client.skeletalMuscleMass ?? 'N/A'} unit="kg" icon={<Dumbbell className="w-5 h-5 text-blue-500" />} />
+             </div>
+             
+             <div className="bg-white rounded-lg border p-6">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Brain className="w-5 h-5 text-[#8C3A36]"/> AI Coach Insights</h3>
+                        <p className="text-sm text-slate-500">A quick summary of recent progress.</p>
+                    </div>
+                    <button onClick={handleGenerateInsight} disabled={generatingInsight} className="text-sm font-medium text-[#8C3A36] hover:text-[#7a2f2b] flex items-center gap-1 disabled:opacity-50">
+                        <RefreshCw className={`w-3 h-3 ${generatingInsight ? 'animate-spin': ''}`} /> {generatingInsight ? 'Generating...' : 'Regenerate'}
+                    </button>
+                </div>
+                <div className="bg-slate-50/70 p-4 rounded-md border min-h-[100px] text-sm text-slate-700 leading-relaxed">
+                   {generatingInsight && <p className="animate-pulse">Analyzing data...</p>}
+                   {!generatingInsight && (aiInsight ? <p>{aiInsight}</p> : <p className="text-slate-400">Click regenerate to get an AI insight on the client's progress.</p>)}
+                </div>
+             </div>
+          </div>
+        );
+      case 'meal_plans':
+        return (
+            <div className="space-y-4">
+                {mealPlans.length > 0 ? (
+                    mealPlans.map(plan => <MealPlanCard key={plan.id} plan={plan} onDelete={handleDeleteMealPlan} />)
+                ) : (
+                    <div className="text-center p-12 bg-white rounded-lg border border-dashed">
+                        <p className="text-slate-500">No meal plans found for {client.name}.</p>
+                        <p className="text-sm text-slate-400 mt-1">Go to the main 'Meal Planner' to generate a new plan.</p>
+                    </div>
+                )}
+            </div>
+        );
+      case 'food':
+        return (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg border p-6 space-y-4">
+                <h3 className="text-lg font-bold text-slate-800">Analyze Client Food Photo</h3>
+                <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
+                    <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setFoodImage(e.target.files[0])} />
+                    {foodImage ? (
+                        <div className="text-[#8C3A36] flex flex-col items-center gap-2"><CheckCircle /> <span>{foodImage.name}</span></div>
+                    ) : (
+                        <div className="text-slate-500 flex flex-col items-center gap-2"><Camera /> <span>Upload Photo</span></div>
+                    )}
+                </div>
+                <button onClick={handleAnalyzeFood} disabled={!foodImage || analyzingFood} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b]">
+                    {analyzingFood ? <><Loader2 className="w-4 h-4 animate-spin"/> Analyzing...</> : "Analyze Food"}
+                </button>
+                {foodAnalysis && (
+                    <div className="bg-slate-50 p-4 rounded-md border">
+                        <h4 className="font-bold mb-2">Analysis:</h4>
+                        <p className="text-sm whitespace-pre-wrap">{foodAnalysis}</p>
+                    </div>
+                )}
+            </div>
+            <div className="bg-white rounded-lg border p-6">
+                 <h3 className="text-lg font-bold text-slate-800 mb-4">Recent Food Logs</h3>
+                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                    {foodLogs.length > 0 ? foodLogs.map(log => (
+                        <div key={log.id} className="p-3 bg-slate-50 rounded-md border flex gap-3 items-start">
+                            {log.imageUrl && <img src={log.imageUrl} className="w-16 h-16 rounded object-cover" />}
+                            <div>
+                               <p className="text-xs text-slate-400 font-bold uppercase">{new Date(log.createdAt).toLocaleString()}</p>
+                               <p className="text-sm mt-1">{log.aiAnalysis || log.notes || "No analysis available."}</p>
+                            </div>
+                        </div>
+                    )) : <p className="text-center text-slate-400 py-8">No food logs yet.</p>}
+                 </div>
+            </div>
+          </div>
+        );
+      case 'messages':
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-20rem)]">
+              <div className="flex-1 p-4 space-y-4 overflow-y-auto flex flex-col">
+                  {messages.map(msg => (
+                      <div key={msg.id} className={`flex flex-col max-w-sm sm:max-w-md ${msg.sender === 'nutritionist' ? 'self-end items-end' : 'self-start items-start'}`}>
+                          <div className={`px-4 py-2 rounded-2xl ${msg.sender === 'nutritionist' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
+                              {msg.content}
+                          </div>
+                          <span className="text-xs text-slate-400 mt-1 px-1">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}</span>
+                      </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+              </div>
+              <form onSubmit={handleSendMessage} className="p-4 border-t bg-slate-50 flex items-center gap-3 sticky bottom-0">
+                  <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" />
+                  <button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50" disabled={!newMessage.trim()}><Send className="w-5 h-5"/></button>
+              </form>
+          </div>
+        );
+      case 'medical':
+        return (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg border p-6 space-y-4">
+              <h3 className="text-lg font-bold text-slate-800">Medical & Dietary Information</h3>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Medical History / Conditions</label>
+                <textarea value={medicalInfo.medicalHistory} onChange={e => setMedicalInfo({...medicalInfo, medicalHistory: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-24" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Allergies</label>
+                <textarea value={medicalInfo.allergies} onChange={e => setMedicalInfo({...medicalInfo, allergies: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-20" />
+              </div>
+               <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Medications</label>
+                <textarea value={medicalInfo.medications} onChange={e => setMedicalInfo({...medicalInfo, medications: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-20" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Dietary History & Preferences</label>
+                <textarea 
+                    value={medicalInfo.dietaryHistory} 
+                    onChange={e => setMedicalInfo({...medicalInfo, dietaryHistory: e.target.value})} 
+                    className="w-full mt-1 p-2 border rounded-md h-24"
+                    placeholder="e.g., Previously tried keto, dislikes cilantro, prefers quick meals..."
+                 />
+              </div>
+              <button onClick={handleSaveMedicalInfo} disabled={isSavingMedicalInfo} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center hover:bg-[#7a2f2b]">
+                {isSavingMedicalInfo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+              </button>
+            </div>
+            <div className="bg-white rounded-lg border p-6 space-y-4">
+              <h3 className="text-lg font-bold text-slate-800">Medical Documents</h3>
+              <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 text-center">
+                 <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setFileToUpload(e.target.files[0])} />
+                 <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+                    {fileToUpload ? <><FileIcon className="w-6 h-6 text-[#8C3A36]" /><span>{fileToUpload.name}</span></> : <><Upload className="w-6 h-6"/><span>Click to upload file</span></>}
+                 </div>
+              </div>
+              {fileToUpload && (
+                <button onClick={handleFileUpload} disabled={isUploading} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isUploading ? <><Loader2 className="w-4 h-4 animate-spin"/> Uploading...</> : 'Upload Document'}
+                </button>
+              )}
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                 {medicalDocuments.map(doc => (
+                    <div key={doc.id} className="p-2 bg-slate-50 rounded-md border flex justify-between items-center group">
+                       <div className="flex items-center gap-2">
+                         <FileIcon className="w-4 h-4 text-slate-400" />
+                         <span className="text-sm font-medium text-slate-700">{doc.fileName}</span>
+                       </div>
+                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button onClick={() => handleDownloadFile(doc.filePath, doc.fileName)} className="p-1.5 hover:bg-slate-200 rounded"><Download className="w-4 h-4 text-slate-600"/></button>
+                         <button onClick={() => handleDeleteFile(doc)} className="p-1.5 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4 text-red-500"/></button>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+            </div>
+          </div>
+        );
+      case 'schedule':
+        const renderCalendar = () => {
+            const today = new Date();
+            const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+            const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+            const startDate = new Date(startOfMonth);
+            startDate.setDate(startDate.getDate() - startOfMonth.getDay());
+            const endDate = new Date(endOfMonth);
+            endDate.setDate(endDate.getDate() + (6 - endOfMonth.getDay()));
+            const days = [];
+            let day = new Date(startDate);
+            while (day <= endDate) {
+                days.push(new Date(day));
+                day.setDate(day.getDate() + 1);
+            }
+
+            const getApptColor = (type: Appointment['type']) => {
+                switch(type) {
+                    case 'Check-in': return 'bg-emerald-500';
+                    case 'Consultation': return 'bg-blue-500';
+                    case 'Onboarding': return 'bg-purple-500';
+                    default: return 'bg-slate-500';
+                }
+            };
+
+            return (
+                <div className="bg-white rounded-lg border p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                           <h3 className="text-lg font-bold text-slate-800">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
+                           <button onClick={() => setCurrentMonth(new Date())} className="text-xs font-semibold bg-slate-100 px-2 py-1 rounded hover:bg-slate-200">Today</button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-2 rounded-full hover:bg-slate-100"><ChevronLeft className="w-5 h-5"/></button>
+                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-2 rounded-full hover:bg-slate-100"><ChevronRight className="w-5 h-5"/></button>
+                             <button onClick={() => handleOpenApptModal(new Date().toISOString().split('T')[0])} className="bg-[#8C3A36] text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-4 h-4"/> New Appointment</button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-7 text-center text-xs font-bold text-slate-500 uppercase">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-2">{d}</div>)}
+                    </div>
+                    <div className="grid grid-cols-7 border-t border-l">
+                        {days.map(d => {
+                            const isToday = d.toDateString() === today.toDateString();
+                            const isCurrentMonth = d.getMonth() === currentMonth.getMonth();
+                            const dayAppts = appointments.filter(a => new Date(a.date).toDateString() === d.toDateString());
+                            return (
+                                <div key={d.toString()} className={`h-28 border-b border-r p-2 flex flex-col ${isCurrentMonth ? 'bg-white' : 'bg-slate-50'} relative group`}>
+                                    <button onClick={() => handleOpenApptModal(d.toISOString().split('T')[0])} className="absolute top-1 right-1 p-1 opacity-0 group-hover:opacity-100 bg-white rounded-full shadow hover:bg-slate-100"><Plus className="w-3 h-3 text-slate-500"/></button>
+                                    <span className={`text-sm font-semibold ${isToday ? 'bg-[#8C3A36] text-white rounded-full w-6 h-6 flex items-center justify-center' : isCurrentMonth ? 'text-slate-800' : 'text-slate-400'}`}>{d.getDate()}</span>
+                                    <div className="mt-1 space-y-1 overflow-y-auto text-xs">
+                                        {dayAppts.map(appt => (
+                                            <button key={appt.id} onClick={() => handleOpenApptModal(d.toISOString().split('T')[0], appt)} className={`w-full text-left p-1 rounded ${getApptColor(appt.type)} bg-opacity-20 text-slate-800 hover:ring-2`}>
+                                                <div className="font-semibold truncate">{appt.type}</div>
+                                                <div className="text-slate-600">{new Date(appt.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )
+        };
+        return renderCalendar();
+      case 'billing':
+        return (
+           <div className="bg-white rounded-lg border p-6">
+              <div className="flex justify-between items-center mb-4">
+                 <h3 className="text-lg font-bold text-slate-800">Invoices</h3>
+                 <button onClick={handleGenerateInvoice} className="bg-[#8C3A36] text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-4 h-4"/> New Invoice</button>
+              </div>
+              <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm">
+                    <thead className="border-b text-slate-500">
+                       <tr>
+                          <th className="py-2">Date</th>
+                          <th className="py-2">Amount</th>
+                          <th className="py-2">Status</th>
+                          <th className="py-2">Due</th>
+                          <th className="py-2 text-right">Actions</th>
+                       </tr>
+                    </thead>
+                    <tbody>
+                       {invoices.map(inv => (
+                         <tr key={inv.id} className="border-b last:border-0 hover:bg-slate-50">
+                            <td className="py-3">{new Date(inv.generatedAt).toLocaleDateString()}</td>
+                            <td className="py-3 font-medium">{getCurrencySymbol(inv.currency)}{inv.amount.toFixed(2)}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-1 text-xs font-bold rounded-full ${inv.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{inv.status}</span>
+                            </td>
+                            <td className="py-3">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                            <td className="py-3 text-right">
+                                <button
+                                    onClick={() => handleOpenInvoiceActions(inv)}
+                                    className="p-2 text-slate-400 hover:text-[#8C3A36] rounded-lg hover:bg-[#F9F5F5] transition-colors"
+                                    title="Invoice Actions"
+                                >
+                                    <Send className="w-4 h-4" />
+                                </button>
+                            </td>
+                         </tr>
+                       ))}
+                       {invoices.length === 0 && (
+                          <tr><td colSpan={5} className="text-center py-8 text-slate-400">No invoices yet.</td></tr>
+                       )}
+                    </tbody>
+                 </table>
+              </div>
+           </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+
+  return (
+    <div className="animate-in fade-in duration-300">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back to Client List
+        </button>
+        <button onClick={() => setShowShareModal(true)} className="bg-white border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-slate-50">
+           <Share2 className="w-4 h-4 text-[#8C3A36]"/> Share Client Portal
+        </button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-start gap-6 mb-6">
+        <img src={client.avatarUrl} alt={client.name} className="w-24 h-24 rounded-full object-cover bg-slate-200 border-4 border-white shadow-md"/>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">{client.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-500 mt-2">
+             <span className="flex items-center gap-1.5 text-sm"><Mail className="w-4 h-4"/> {client.email}</span>
+             <span className="flex items-center gap-1.5 text-sm"><MapPin className="w-4 h-4"/> Joined: {new Date(client.joinedAt).toLocaleDateString()}</span>
+             <span className="flex items-center gap-1.5 text-sm"><DollarSign className="w-4 h-4"/> Plan: Pro</span>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-[#8C3A36] bg-[#F9F5F5] px-3 py-1 rounded-full inline-block border border-stone-200">
+             Goal: {client.goal}
+          </p>
+        </div>
+      </div>
+      
+      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide">
+        {tabItems.map(tab => (
+          <button 
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap
+              ${activeTab === tab.id 
+                ? 'border-b-2 border-[#8C3A36] text-[#8C3A36]' 
+                : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <tab.icon className="w-4 h-4" /> {tab.label}
+          </button>
+        ))}
+      </div>
+      
+      <div className="mt-6">
+        {renderContent()}
+      </div>
+
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+               <div className="p-6">
+                  <div className="flex justify-between items-center mb-4">
+                     <h3 className="font-bold text-lg">Share Client Portal</h3>
+                     <button onClick={() => setShowShareModal(false)}><X className="w-5 h-5"/></button>
+                  </div>
+                  <p className="text-sm text-slate-600 mb-4">Share this secure link with your client so they can view their meal plans, log progress, and message you.</p>
+                  <div className="relative">
+                     <input type="text" readOnly value={portalLink} className="w-full bg-slate-100 border border-slate-200 rounded-lg p-3 text-sm pr-20" />
+                     <button 
+                       onClick={() => {
+                         navigator.clipboard.writeText(portalLink);
+                         setCopied(true);
+                         setTimeout(() => setCopied(false), 2000);
+                       }}
+                       className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#7a2f2b]"
+                     >
+                       {copied ? <CheckCircle className="w-4 h-4"/> : 'Copy'}
+                     </button>
+                  </div>
+                  <div className="mt-6 pt-6 border-t border-slate-200">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-8 h-8 text-amber-500 flex-shrink-0" />
+                        <div>
+                            <h4 className="font-bold text-slate-800">Regenerate Access Link</h4>
+                            <p className="text-sm text-slate-600 mt-1">
+                                If you believe the client's portal link has been compromised, you can regenerate it. This will permanently disable the old link.
+                            </p>
+                            <button
+                                onClick={handleRegenerateLink}
+                                disabled={regenerating}
+                                className="mt-3 bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-amber-100 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {regenerating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
+                                {regenerating ? 'Regenerating...' : 'Regenerate Link'}
+                            </button>
+                        </div>
+                    </div>
+                  </div>
+               </div>
+           </div>
+        </div>
+      )}
+
+      {showInvoiceModal && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+             <form onSubmit={handleSaveInvoice} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+               <div className="bg-slate-900 p-5 text-white flex justify-between items-center">
+                  <h3 className="font-bold text-lg">New Invoice for {client.name}</h3>
+                  <button type="button" onClick={() => setShowInvoiceModal(false)}><X className="w-5 h-5"/></button>
+               </div>
+               <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                 <div>
+                    <label className="text-xs font-bold uppercase text-slate-600">Due Date</label>
+                    <input type="date" value={invoiceForm.dueDate} onChange={e => setInvoiceForm({...invoiceForm, dueDate: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold uppercase text-slate-600 mb-2 block">Invoice Items</label>
+                    <div className="space-y-2">
+                       {invoiceForm.items.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                             <input type="text" value={item.description} onChange={e => handleUpdateInvoiceItem(index, 'description', e.target.value)} placeholder="Description" className="flex-1 p-2 border rounded-md"/>
+                             <input type="number" value={item.cost} onChange={e => handleUpdateInvoiceItem(index, 'cost', e.target.value)} placeholder="Cost" className="w-24 p-2 border rounded-md"/>
+                             <button type="button" onClick={() => handleRemoveInvoiceItem(index)}><Trash2 className="w-4 h-4 text-red-500"/></button>
+                          </div>
+                       ))}
+                    </div>
+                    <button type="button" onClick={handleAddInvoiceItem} className="mt-2 text-sm text-[#8C3A36] font-medium flex items-center gap-1"><Plus className="w-4 h-4"/> Add Item</button>
+                 </div>
+                 <div className="text-right font-bold text-lg pt-4 border-t">
+                    Total: {getCurrencySymbol(billingSettings.currency)}{invoiceForm.items.reduce((acc, item) => acc + item.cost, 0).toFixed(2)}
+                 </div>
+               </div>
+               <div className="p-4 bg-slate-50 border-t flex justify-end">
+                  <button type="submit" disabled={savingInvoice} className="bg-[#8C3A36] text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b]">
+                     {savingInvoice ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Create & Send'}
+                  </button>
+               </div>
+            </form>
+         </div>
+      )}
+
+      {showApptModal && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+             <form onSubmit={handleSaveAppt} className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+               <div className="bg-slate-900 p-5 text-white flex justify-between items-center">
+                  <h3 className="font-bold text-lg">{selectedAppt ? 'Edit' : 'New'} Appointment</h3>
+                  <button type="button" onClick={() => setShowApptModal(false)}><X className="w-5 h-5"/></button>
+               </div>
+               <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                     <div>
+                        <label className="text-xs font-bold uppercase text-slate-600">Date</label>
+                        <input type="date" required value={apptForm.date} onChange={e => setApptForm({...apptForm, date: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                     </div>
+                     <div>
+                        <label className="text-xs font-bold uppercase text-slate-600">Time</label>
+                        <input type="time" required value={apptForm.time} onChange={e => setApptForm({...apptForm, time: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                     </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-600">Type</label>
+                    <select value={apptForm.type} onChange={e => setApptForm({...apptForm, type: e.target.value as any})} className="w-full p-2 border rounded-md mt-1">
+                        <option>Check-in</option>
+                        <option>Consultation</option>
+                        <option>Onboarding</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-600">Notes</label>
+                    <textarea value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})} className="w-full p-2 border rounded-md mt-1 h-24"></textarea>
+                  </div>
+               </div>
+               <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
+                  {selectedAppt && <button type="button" onClick={() => handleDeleteAppointment(selectedAppt.id)} className="text-sm text-red-600 font-bold hover:underline">Delete</button>}
+                  <div className="ml-auto">
+                    <button type="submit" disabled={savingAppt} className="bg-[#8C3A36] text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b]">
+                        {savingAppt ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Save Appointment'}
+                    </button>
+                  </div>
+               </div>
+            </form>
+         </div>
+      )}
+
+      {showInvoiceActionModal && selectedInvoiceAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-5 flex justify-between items-center border-b bg-slate-50">
+                    <h3 className="font-bold text-lg text-slate-800">Invoice Actions</h3>
+                    <button onClick={() => setShowInvoiceActionModal(false)} className="text-slate-500 hover:text-slate-800"><X className="w-5 h-5"/></button>
+                </div>
+                <div className="p-6 space-y-6">
+                    <div>
+                        <p><span className="font-semibold text-slate-600">Client:</span> {client.name}</p>
+                        <p><span className="font-semibold text-slate-600">Amount:</span> {getCurrencySymbol(selectedInvoiceAction.currency)}{selectedInvoiceAction.amount.toFixed(2)}</p>
+                        <p>
+                            <span className="font-semibold text-slate-600">Status:</span>
+                            <span className={`ml-2 font-medium ${selectedInvoiceAction.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'} px-1.5 py-0.5 rounded-full text-xs`}>
+                                {selectedInvoiceAction.status}
+                            </span>
+                        </p>
+                    </div>
+                    
+                    {selectedInvoiceAction.status !== 'Paid' && (
+                        <>
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-600">Client Payment Link</label>
+                                <div className="relative mt-1">
+                                    <input 
+                                        type="text" 
+                                        readOnly 
+                                        value={`${window.location.origin}/#/portal/${client.portalAccessToken}?tab=billing`} 
+                                        className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-sm pr-20 text-slate-700" 
+                                    />
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${window.location.origin}/#/portal/${client.portalAccessToken}?tab=billing`);
+                                            setCopiedPaymentLink(true);
+                                            setTimeout(() => setCopiedPaymentLink(false), 2000);
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#7a2f2b] w-16"
+                                    >
+                                        {copiedPaymentLink ? <CheckCircle className="w-4 h-4 mx-auto"/> : 'Copy'}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">Share this link with your client to pay online.</p>
+                            </div>
+
+                            <button 
+                                onClick={handleMarkAsPaid}
+                                className="w-full py-2 bg-green-100 text-green-700 border border-green-200 font-bold rounded-lg text-sm hover:bg-green-200 transition-colors"
+                            >
+                                Mark as Paid Manually
+                            </button>
+                        </>
+                    )}
+                </div>
+                <div className="p-4 bg-slate-50 border-t flex justify-end">
+                    <button onClick={() => setShowInvoiceActionModal(false)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+export default ClientProfile;

@@ -1,0 +1,8 @@
+{
+  "short_name": "NutriTherapy",
+  "name": "NutriTherapy Solutions Client Portal",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#8C3A36",
+  "background_color": "#ffffff"
+}
