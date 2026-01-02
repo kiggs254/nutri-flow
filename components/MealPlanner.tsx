@@ -456,13 +456,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><ChefHat className="w-5 h-5 text-[#8C3A36]"/> AI Meal Plan Generator</h2>
           <div className="space-y-4">
-            <div className="space-y-3 bg-slate-50/70 p-3 rounded-lg border">
-              <h3 className="text-xs uppercase font-bold text-slate-500 tracking-wider">Using Client Profile Data:</h3>
-              <InfoField label="Primary Goal" value={selectedClient.goal} />
-              <InfoField label="Medical History" value={selectedClient.medicalHistory} />
-              <InfoField label="Allergies / Exclusions" value={selectedClient.allergies} />
-              <InfoField label="Dietary History & Preferences" value={selectedClient.dietaryHistory} />
-            </div>
+
             <EditableField label="Custom Instructions (for this plan only)" value={params.customInstructions || ''} onChange={v => handleParamChange('customInstructions', v)} type="textarea" />
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Reference Image (Optional)</label>
