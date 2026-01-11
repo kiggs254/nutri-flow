@@ -289,7 +289,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="min-h-screen bg-slate-50 flex font-sans w-full overflow-x-hidden">
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 h-screen sticky top-0">
         <div className="p-4 flex items-center justify-center">
           <img src="https://nutritherapy.co.ke/wp-content/uploads/2024/08/7e3cca79-563d-4b42-babb-5e96a6ff0b6e.png" alt="NutriTherapy Solutions Logo" className="h-16" />
@@ -364,8 +364,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen md:h-screen">
-        <header className="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 md:px-8 px-4 py-3 flex justify-between items-center">
+      <div className="flex-1 flex flex-col min-h-screen md:h-screen w-full overflow-x-hidden">
+        <header className="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 md:px-8 px-4 py-3 flex justify-between items-center w-full">
           <div className="flex items-center gap-3 flex-1 md:flex-none">
             <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-slate-700">
               <Menu className="w-6 h-6" />
@@ -424,7 +424,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </header>
 
-        <main className="flex-1 p-3 sm:p-4 md:p-8 overflow-y-auto">
+        <main className="flex-1 p-3 sm:p-4 md:p-8 overflow-y-auto overflow-x-hidden w-full">
           {renderContent()}
         </main>
       </div>
