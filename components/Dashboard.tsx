@@ -437,7 +437,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             </div>
             <button onClick={() => setMobileMenuOpen(false)} className="text-white"><X /></button>
           </div>
-          <nav className="flex-1 p-4 space-y-2">
+          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -460,6 +460,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                 {item.label}
               </button>
             ))}
+            <button
+              onClick={() => {
+                setActiveTab('settings');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-lg font-medium rounded-lg transition-colors mt-2
+                ${activeTab === 'settings' ? 'bg-slate-700 text-white' : 'text-slate-300'}`}
+            >
+              <Settings className="w-6 h-6" />
+              Settings
+            </button>
              <button 
                 onClick={onLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 text-lg font-medium rounded-lg text-red-400 mt-8"
