@@ -631,17 +631,17 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                <StatCard label="Muscle Mass" value={client.skeletalMuscleMass ?? 'N/A'} unit="kg" icon={<Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />} />
              </div>
              
-             <div className="bg-white rounded-lg border p-6">
-                <div className="flex justify-between items-start mb-4">
+             <div className="bg-white rounded-lg border p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-3 sm:mb-4">
                     <div>
-                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Brain className="w-5 h-5 text-[#8C3A36]"/> AI Coach Insights</h3>
-                        <p className="text-sm text-slate-500">A quick summary of recent progress.</p>
+                        <h3 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2"><Brain className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]"/> AI Coach Insights</h3>
+                        <p className="text-xs sm:text-sm text-slate-500">A quick summary of recent progress.</p>
                     </div>
-                    <button onClick={handleGenerateInsight} disabled={generatingInsight} className="text-sm font-medium text-[#8C3A36] hover:text-[#7a2f2b] flex items-center gap-1 disabled:opacity-50">
+                    <button onClick={handleGenerateInsight} disabled={generatingInsight} className="text-xs sm:text-sm font-medium text-[#8C3A36] hover:text-[#7a2f2b] flex items-center gap-1 disabled:opacity-50">
                         <RefreshCw className={`w-3 h-3 ${generatingInsight ? 'animate-spin': ''}`} /> {generatingInsight ? 'Generating...' : 'Regenerate'}
                     </button>
                 </div>
-                <div className="bg-slate-50/70 p-4 rounded-md border min-h-[100px] text-sm text-slate-700 leading-relaxed">
+                <div className="bg-slate-50/70 p-3 sm:p-4 rounded-md border min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm text-slate-700 leading-relaxed">
                    {generatingInsight && <p className="animate-pulse">Analyzing data...</p>}
                    {!generatingInsight && (aiInsight ? <p>{aiInsight}</p> : <p className="text-slate-400">Click regenerate to get an AI insight on the client's progress.</p>)}
                 </div>
@@ -665,37 +665,37 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         return (
           <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
             <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
-                <h3 className="text-lg font-bold text-slate-800">Analyze Client Food Photo</h3>
-                <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Analyze Client Food Photo</h3>
+                <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 sm:p-6 text-center hover:bg-slate-50 transition-colors">
                     <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setFoodImage(e.target.files[0])} />
                     {foodImage ? (
-                        <div className="text-[#8C3A36] flex flex-col items-center gap-2"><CheckCircle /> <span>{foodImage.name}</span></div>
+                        <div className="text-[#8C3A36] flex flex-col items-center gap-2"><CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" /> <span className="text-xs sm:text-sm break-all">{foodImage.name}</span></div>
                     ) : (
-                        <div className="text-slate-500 flex flex-col items-center gap-2"><Camera /> <span>Upload Photo</span></div>
+                        <div className="text-slate-500 flex flex-col items-center gap-2"><Camera className="w-5 h-5 sm:w-6 sm:h-6" /> <span className="text-xs sm:text-sm sm:text-base">Upload Photo</span></div>
                     )}
                 </div>
-                <button onClick={handleAnalyzeFood} disabled={!foodImage || analyzingFood} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b]">
+                <button onClick={handleAnalyzeFood} disabled={!foodImage || analyzingFood} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b] text-sm sm:text-base">
                     {analyzingFood ? <><Loader2 className="w-4 h-4 animate-spin"/> Analyzing...</> : "Analyze Food"}
                 </button>
                 {foodAnalysis && (
-                    <div className="bg-slate-50 p-4 rounded-md border">
-                        <h4 className="font-bold mb-2">Analysis:</h4>
-                        <p className="text-sm whitespace-pre-wrap">{foodAnalysis}</p>
+                    <div className="bg-slate-50 p-3 sm:p-4 rounded-md border">
+                        <h4 className="font-bold mb-2 text-sm sm:text-base">Analysis:</h4>
+                        <p className="text-xs sm:text-sm whitespace-pre-wrap">{foodAnalysis}</p>
                     </div>
                 )}
             </div>
             <div className="bg-white rounded-lg border p-4 sm:p-6">
                  <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4">Recent Food Logs</h3>
-                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                 <div className="space-y-2 sm:space-y-3 max-h-[400px] overflow-y-auto pr-1 sm:pr-2">
                     {foodLogs.length > 0 ? foodLogs.map(log => (
-                        <div key={log.id} className="p-3 bg-slate-50 rounded-md border flex gap-3 items-start">
-                            {log.imageUrl && <img src={log.imageUrl} className="w-16 h-16 rounded object-cover" />}
-                            <div>
-                               <p className="text-xs text-slate-400 font-bold uppercase">{new Date(log.createdAt).toLocaleString()}</p>
-                               <p className="text-sm mt-1">{log.aiAnalysis || log.notes || "No analysis available."}</p>
+                        <div key={log.id} className="p-2.5 sm:p-3 bg-slate-50 rounded-md border flex gap-2 sm:gap-3 items-start">
+                            {log.imageUrl && <img src={log.imageUrl} className="w-12 h-12 sm:w-16 sm:h-16 rounded object-cover flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                               <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">{new Date(log.createdAt).toLocaleString()}</p>
+                               <p className="text-xs sm:text-sm mt-1 break-words">{log.aiAnalysis || log.notes || "No analysis available."}</p>
                             </div>
                         </div>
-                    )) : <p className="text-center text-slate-400 py-8">No food logs yet.</p>}
+                    )) : <p className="text-center text-slate-400 py-6 sm:py-8 text-sm">No food logs yet.</p>}
                  </div>
             </div>
           </div>
@@ -723,56 +723,56 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       case 'medical':
         return (
           <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
-              <h3 className="text-lg font-bold text-slate-800">Medical & Dietary Information</h3>
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-3 sm:space-y-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Medical & Dietary Information</h3>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Medical History / Conditions</label>
-                <textarea value={medicalInfo.medicalHistory} onChange={e => setMedicalInfo({...medicalInfo, medicalHistory: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-24" />
+                <textarea value={medicalInfo.medicalHistory} onChange={e => setMedicalInfo({...medicalInfo, medicalHistory: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Allergies</label>
-                <textarea value={medicalInfo.allergies} onChange={e => setMedicalInfo({...medicalInfo, allergies: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-20" />
+                <textarea value={medicalInfo.allergies} onChange={e => setMedicalInfo({...medicalInfo, allergies: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" />
               </div>
                <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Medications</label>
-                <textarea value={medicalInfo.medications} onChange={e => setMedicalInfo({...medicalInfo, medications: e.target.value})} className="w-full mt-1 p-2 border rounded-md h-20" />
+                <textarea value={medicalInfo.medications} onChange={e => setMedicalInfo({...medicalInfo, medications: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Dietary History & Preferences</label>
                 <textarea 
                     value={medicalInfo.dietaryHistory} 
                     onChange={e => setMedicalInfo({...medicalInfo, dietaryHistory: e.target.value})} 
-                    className="w-full mt-1 p-2 border rounded-md h-24"
+                    className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
                     placeholder="e.g., Previously tried keto, dislikes cilantro, prefers quick meals..."
                  />
               </div>
-              <button onClick={handleSaveMedicalInfo} disabled={isSavingMedicalInfo} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center hover:bg-[#7a2f2b]">
-                {isSavingMedicalInfo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+              <button onClick={handleSaveMedicalInfo} disabled={isSavingMedicalInfo} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b] text-sm">
+                {isSavingMedicalInfo ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
               </button>
             </div>
-            <div className="bg-white rounded-lg border p-6 space-y-4">
-              <h3 className="text-lg font-bold text-slate-800">Medical Documents</h3>
-              <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 text-center">
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Medical Documents</h3>
+              <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-3 sm:p-4 text-center">
                  <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setFileToUpload(e.target.files[0])} />
                  <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
-                    {fileToUpload ? <><FileIcon className="w-6 h-6 text-[#8C3A36]" /><span>{fileToUpload.name}</span></> : <><Upload className="w-6 h-6"/><span>Click to upload file</span></>}
+                    {fileToUpload ? <><FileIcon className="w-5 h-5 sm:w-6 sm:h-6 text-[#8C3A36]" /><span className="text-xs sm:text-sm break-all">{fileToUpload.name}</span></> : <><Upload className="w-5 h-5 sm:w-6 sm:h-6"/><span className="text-xs sm:text-sm">Click to upload file</span></>}
                  </div>
               </div>
               {fileToUpload && (
-                <button onClick={handleFileUpload} disabled={isUploading} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                <button onClick={handleFileUpload} disabled={isUploading} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
                     {isUploading ? <><Loader2 className="w-4 h-4 animate-spin"/> Uploading...</> : 'Upload Document'}
                 </button>
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto">
                  {medicalDocuments.map(doc => (
                     <div key={doc.id} className="p-2 bg-slate-50 rounded-md border flex justify-between items-center group">
-                       <div className="flex items-center gap-2">
-                         <FileIcon className="w-4 h-4 text-slate-400" />
-                         <span className="text-sm font-medium text-slate-700">{doc.fileName}</span>
+                       <div className="flex items-center gap-2 flex-1 min-w-0">
+                         <FileIcon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                         <span className="text-xs sm:text-sm font-medium text-slate-700 truncate">{doc.fileName}</span>
                        </div>
-                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => handleDownloadFile(doc.filePath, doc.fileName)} className="p-1.5 hover:bg-slate-200 rounded"><Download className="w-4 h-4 text-slate-600"/></button>
-                         <button onClick={() => handleDeleteFile(doc)} className="p-1.5 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4 text-red-500"/></button>
+                       <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                         <button onClick={() => handleDownloadFile(doc.filePath, doc.fileName)} className="p-1.5 hover:bg-slate-200 rounded"><Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600"/></button>
+                         <button onClick={() => handleDeleteFile(doc)} className="p-1.5 hover:bg-red-100 rounded"><Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500"/></button>
                        </div>
                     </div>
                  ))}
@@ -806,35 +806,35 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
             };
 
             return (
-                <div className="bg-white rounded-lg border p-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                           <h3 className="text-lg font-bold text-slate-800">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
-                           <button onClick={() => setCurrentMonth(new Date())} className="text-xs font-semibold bg-slate-100 px-2 py-1 rounded hover:bg-slate-200">Today</button>
+                <div className="bg-white rounded-lg border p-3 sm:p-4 lg:p-6 overflow-x-auto">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-3 sm:mb-4 min-w-[600px] sm:min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                           <h3 className="text-base sm:text-lg font-bold text-slate-800">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
+                           <button onClick={() => setCurrentMonth(new Date())} className="text-[10px] sm:text-xs font-semibold bg-slate-100 px-2 py-1 rounded hover:bg-slate-200">Today</button>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-2 rounded-full hover:bg-slate-100"><ChevronLeft className="w-5 h-5"/></button>
-                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-2 rounded-full hover:bg-slate-100"><ChevronRight className="w-5 h-5"/></button>
-                             <button onClick={() => handleOpenApptModal(new Date().toISOString().split('T')[0])} className="bg-[#8C3A36] text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-4 h-4"/> New Appointment</button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100"><ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+                            <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100"><ChevronRight className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+                             <button onClick={() => handleOpenApptModal(new Date().toISOString().split('T')[0])} className="bg-[#8C3A36] text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> <span className="hidden sm:inline">New Appointment</span><span className="sm:hidden">New</span></button>
                         </div>
                     </div>
-                    <div className="grid grid-cols-7 text-center text-xs font-bold text-slate-500 uppercase">
-                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-2">{d}</div>)}
+                    <div className="grid grid-cols-7 text-center text-[10px] sm:text-xs font-bold text-slate-500 uppercase min-w-[600px] sm:min-w-0">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-1.5 sm:py-2">{d}</div>)}
                     </div>
-                    <div className="grid grid-cols-7 border-t border-l">
+                    <div className="grid grid-cols-7 border-t border-l min-w-[600px] sm:min-w-0">
                         {days.map(d => {
                             const isToday = d.toDateString() === today.toDateString();
                             const isCurrentMonth = d.getMonth() === currentMonth.getMonth();
                             const dayAppts = appointments.filter(a => new Date(a.date).toDateString() === d.toDateString());
                             return (
-                                <div key={d.toString()} className={`h-28 border-b border-r p-2 flex flex-col ${isCurrentMonth ? 'bg-white' : 'bg-slate-50'} relative group`}>
-                                    <button onClick={() => handleOpenApptModal(d.toISOString().split('T')[0])} className="absolute top-1 right-1 p-1 opacity-0 group-hover:opacity-100 bg-white rounded-full shadow hover:bg-slate-100"><Plus className="w-3 h-3 text-slate-500"/></button>
-                                    <span className={`text-sm font-semibold ${isToday ? 'bg-[#8C3A36] text-white rounded-full w-6 h-6 flex items-center justify-center' : isCurrentMonth ? 'text-slate-800' : 'text-slate-400'}`}>{d.getDate()}</span>
-                                    <div className="mt-1 space-y-1 overflow-y-auto text-xs">
+                                <div key={d.toString()} className={`h-20 sm:h-24 lg:h-28 border-b border-r p-1 sm:p-2 flex flex-col ${isCurrentMonth ? 'bg-white' : 'bg-slate-50'} relative group`}>
+                                    <button onClick={() => handleOpenApptModal(d.toISOString().split('T')[0])} className="absolute top-0.5 sm:top-1 right-0.5 sm:right-1 p-0.5 sm:p-1 opacity-0 group-hover:opacity-100 bg-white rounded-full shadow hover:bg-slate-100"><Plus className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-500"/></button>
+                                    <span className={`text-xs sm:text-sm font-semibold ${isToday ? 'bg-[#8C3A36] text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center' : isCurrentMonth ? 'text-slate-800' : 'text-slate-400'}`}>{d.getDate()}</span>
+                                    <div className="mt-0.5 sm:mt-1 space-y-0.5 sm:space-y-1 overflow-y-auto text-[9px] sm:text-xs">
                                         {dayAppts.map(appt => (
-                                            <button key={appt.id} onClick={() => handleOpenApptModal(d.toISOString().split('T')[0], appt)} className={`w-full text-left p-1 rounded ${getApptColor(appt.type)} bg-opacity-20 text-slate-800 hover:ring-2`}>
+                                            <button key={appt.id} onClick={() => handleOpenApptModal(d.toISOString().split('T')[0], appt)} className={`w-full text-left p-0.5 sm:p-1 rounded ${getApptColor(appt.type)} bg-opacity-20 text-slate-800 hover:ring-2`}>
                                                 <div className="font-semibold truncate">{appt.type}</div>
-                                                <div className="text-slate-600">{new Date(appt.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                                <div className="text-slate-600 text-[8px] sm:text-[10px]">{new Date(appt.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                                             </button>
                                         ))}
                                     </div>
@@ -848,12 +848,34 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         return renderCalendar();
       case 'billing':
         return (
-           <div className="bg-white rounded-lg border p-6">
-              <div className="flex justify-between items-center mb-4">
-                 <h3 className="text-lg font-bold text-slate-800">Invoices</h3>
-                 <button onClick={handleGenerateInvoice} className="bg-[#8C3A36] text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-4 h-4"/> New Invoice</button>
+           <div className="bg-white rounded-lg border p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-3 sm:mb-4">
+                 <h3 className="text-base sm:text-lg font-bold text-slate-800">Invoices</h3>
+                 <button onClick={handleGenerateInvoice} className="w-full sm:w-auto bg-[#8C3A36] text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium flex items-center justify-center gap-1 hover:bg-[#7a2f2b]"><Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> New Invoice</button>
               </div>
-              <div className="overflow-x-auto">
+              {/* Mobile Card View */}
+              <div className="block sm:hidden space-y-3">
+                {invoices.length > 0 ? invoices.map(inv => (
+                  <div key={inv.id} className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className="text-xs text-slate-500 font-medium">{new Date(inv.generatedAt).toLocaleDateString()}</p>
+                        <p className="font-bold text-slate-800 mt-1">{getCurrencySymbol(inv.currency)}{inv.amount.toFixed(2)}</p>
+                        <p className="text-xs text-slate-500 mt-1">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
+                      </div>
+                      <span className={`px-2 py-1 text-[10px] font-bold rounded-full ${inv.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{inv.status}</span>
+                    </div>
+                    <button
+                      onClick={() => handleOpenInvoiceActions(inv)}
+                      className="w-full mt-2 p-2 text-slate-600 hover:text-[#8C3A36] rounded-lg hover:bg-[#F9F5F5] transition-colors text-xs font-medium flex items-center justify-center gap-1"
+                    >
+                      <Send className="w-3.5 h-3.5" /> View Actions
+                    </button>
+                  </div>
+                )) : <p className="text-center py-8 text-slate-400 text-sm">No invoices yet.</p>}
+              </div>
+              {/* Desktop Table View */}
+              <div className="hidden sm:block overflow-x-auto">
                  <table className="w-full text-left text-sm">
                     <thead className="border-b text-slate-500">
                        <tr>
@@ -924,7 +946,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         </div>
       </div>
       
-      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide -mx-3 sm:mx-0 px-3 sm:px-0">
+      <div className="flex border-b border-slate-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
         {tabItems.map(tab => (
           <button 
             key={tab.id}
@@ -944,41 +966,41 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       </div>
 
       {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-               <div className="p-6">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="font-bold text-lg">Share Client Portal</h3>
-                     <button onClick={() => setShowShareModal(false)}><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+           <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+               <div className="p-4 sm:p-6">
+                  <div className="flex justify-between items-center mb-3 sm:mb-4">
+                     <h3 className="font-bold text-base sm:text-lg">Share Client Portal</h3>
+                     <button onClick={() => setShowShareModal(false)} className="p-1"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
                   </div>
-                  <p className="text-sm text-slate-600 mb-4">Share this secure link with your client so they can view their meal plans, log progress, and message you.</p>
+                  <p className="text-xs sm:text-sm text-slate-600 mb-3 sm:mb-4">Share this secure link with your client so they can view their meal plans, log progress, and message you.</p>
                   <div className="relative">
-                     <input type="text" readOnly value={portalLink} className="w-full bg-slate-100 border border-slate-200 rounded-lg p-3 text-sm pr-20" />
+                     <input type="text" readOnly value={portalLink} className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2.5 sm:p-3 text-xs sm:text-sm pr-16 sm:pr-20" />
                      <button 
                        onClick={() => {
                          navigator.clipboard.writeText(portalLink);
                          setCopied(true);
                          setTimeout(() => setCopied(false), 2000);
                        }}
-                       className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#7a2f2b]"
+                       className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-bold hover:bg-[#7a2f2b]"
                      >
-                       {copied ? <CheckCircle className="w-4 h-4"/> : 'Copy'}
+                       {copied ? <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> : 'Copy'}
                      </button>
                   </div>
-                  <div className="mt-6 pt-6 border-t border-slate-200">
-                    <div className="flex items-start gap-3">
-                        <AlertTriangle className="w-8 h-8 text-amber-500 flex-shrink-0" />
-                        <div>
-                            <h4 className="font-bold text-slate-800">Regenerate Access Link</h4>
-                            <p className="text-sm text-slate-600 mt-1">
+                  <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-200">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                        <AlertTriangle className="w-6 h-6 sm:w-8 sm:h-8 text-amber-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-slate-800 text-sm sm:text-base">Regenerate Access Link</h4>
+                            <p className="text-xs sm:text-sm text-slate-600 mt-1">
                                 If you believe the client's portal link has been compromised, you can regenerate it. This will permanently disable the old link.
                             </p>
                             <button
                                 onClick={handleRegenerateLink}
                                 disabled={regenerating}
-                                className="mt-3 bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-amber-100 disabled:opacity-50 flex items-center gap-2"
+                                className="mt-2 sm:mt-3 bg-amber-50 text-amber-700 border border-amber-200 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-amber-100 disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto"
                             >
-                                {regenerating ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
+                                {regenerating ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin"/> : <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4"/>}
                                 {regenerating ? 'Regenerating...' : 'Regenerate Link'}
                             </button>
                         </div>
@@ -990,37 +1012,39 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       )}
 
       {showInvoiceModal && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-             <form onSubmit={handleSaveInvoice} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-               <div className="bg-slate-900 p-5 text-white flex justify-between items-center">
-                  <h3 className="font-bold text-lg">New Invoice for {client.name}</h3>
-                  <button type="button" onClick={() => setShowInvoiceModal(false)}><X className="w-5 h-5"/></button>
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+             <form onSubmit={handleSaveInvoice} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+               <div className="bg-slate-900 p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+                  <h3 className="font-bold text-base sm:text-lg truncate pr-2">New Invoice for {client.name}</h3>
+                  <button type="button" onClick={() => setShowInvoiceModal(false)} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
                </div>
-               <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+               <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
                  <div>
                     <label className="text-xs font-bold uppercase text-slate-600">Due Date</label>
-                    <input type="date" value={invoiceForm.dueDate} onChange={e => setInvoiceForm({...invoiceForm, dueDate: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                    <input type="date" value={invoiceForm.dueDate} onChange={e => setInvoiceForm({...invoiceForm, dueDate: e.target.value})} className="w-full p-2 text-sm sm:text-base border rounded-md mt-1"/>
                  </div>
                  <div>
                     <label className="text-xs font-bold uppercase text-slate-600 mb-2 block">Invoice Items</label>
                     <div className="space-y-2">
                        {invoiceForm.items.map((item, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                             <input type="text" value={item.description} onChange={e => handleUpdateInvoiceItem(index, 'description', e.target.value)} placeholder="Description" className="flex-1 p-2 border rounded-md"/>
-                             <input type="number" value={item.cost} onChange={e => handleUpdateInvoiceItem(index, 'cost', e.target.value)} placeholder="Cost" className="w-24 p-2 border rounded-md"/>
-                             <button type="button" onClick={() => handleRemoveInvoiceItem(index)}><Trash2 className="w-4 h-4 text-red-500"/></button>
+                          <div key={index} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                             <input type="text" value={item.description} onChange={e => handleUpdateInvoiceItem(index, 'description', e.target.value)} placeholder="Description" className="flex-1 p-2 text-sm sm:text-base border rounded-md"/>
+                             <div className="flex items-center gap-2">
+                               <input type="number" value={item.cost} onChange={e => handleUpdateInvoiceItem(index, 'cost', e.target.value)} placeholder="Cost" className="w-24 sm:w-28 p-2 text-sm sm:text-base border rounded-md"/>
+                               <button type="button" onClick={() => handleRemoveInvoiceItem(index)} className="p-2 hover:bg-red-50 rounded-md transition-colors"><Trash2 className="w-4 h-4 text-red-500"/></button>
+                             </div>
                           </div>
                        ))}
                     </div>
-                    <button type="button" onClick={handleAddInvoiceItem} className="mt-2 text-sm text-[#8C3A36] font-medium flex items-center gap-1"><Plus className="w-4 h-4"/> Add Item</button>
+                    <button type="button" onClick={handleAddInvoiceItem} className="mt-2 text-xs sm:text-sm text-[#8C3A36] font-medium flex items-center gap-1"><Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> Add Item</button>
                  </div>
-                 <div className="text-right font-bold text-lg pt-4 border-t">
+                 <div className="text-right font-bold text-base sm:text-lg pt-3 sm:pt-4 border-t">
                     Total: {getCurrencySymbol(billingSettings.currency)}{invoiceForm.items.reduce((acc, item) => acc + item.cost, 0).toFixed(2)}
                  </div>
                </div>
-               <div className="p-4 bg-slate-50 border-t flex justify-end">
-                  <button type="submit" disabled={savingInvoice} className="bg-[#8C3A36] text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b]">
-                     {savingInvoice ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Create & Send'}
+               <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end sticky bottom-0">
+                  <button type="submit" disabled={savingInvoice} className="bg-[#8C3A36] text-white px-4 sm:px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b] text-sm sm:text-base flex items-center gap-2">
+                     {savingInvoice ? <><Loader2 className="w-4 h-4 animate-spin"/> Creating...</> : 'Create & Send'}
                   </button>
                </div>
             </form>
@@ -1028,26 +1052,26 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       )}
 
       {showApptModal && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-             <form onSubmit={handleSaveAppt} className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-               <div className="bg-slate-900 p-5 text-white flex justify-between items-center">
-                  <h3 className="font-bold text-lg">{selectedAppt ? 'Edit' : 'New'} Appointment</h3>
-                  <button type="button" onClick={() => setShowApptModal(false)}><X className="w-5 h-5"/></button>
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+             <form onSubmit={handleSaveAppt} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+               <div className="bg-slate-900 p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+                  <h3 className="font-bold text-base sm:text-lg">{selectedAppt ? 'Edit' : 'New'} Appointment</h3>
+                  <button type="button" onClick={() => setShowApptModal(false)} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
                </div>
-               <div className="p-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+               <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                      <div>
                         <label className="text-xs font-bold uppercase text-slate-600">Date</label>
-                        <input type="date" required value={apptForm.date} onChange={e => setApptForm({...apptForm, date: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                        <input type="date" required value={apptForm.date} onChange={e => setApptForm({...apptForm, date: e.target.value})} className="w-full p-2 text-sm sm:text-base border rounded-md mt-1"/>
                      </div>
                      <div>
                         <label className="text-xs font-bold uppercase text-slate-600">Time</label>
-                        <input type="time" required value={apptForm.time} onChange={e => setApptForm({...apptForm, time: e.target.value})} className="w-full p-2 border rounded-md mt-1"/>
+                        <input type="time" required value={apptForm.time} onChange={e => setApptForm({...apptForm, time: e.target.value})} className="w-full p-2 text-sm sm:text-base border rounded-md mt-1"/>
                      </div>
                   </div>
                   <div>
                     <label className="text-xs font-bold uppercase text-slate-600">Type</label>
-                    <select value={apptForm.type} onChange={e => setApptForm({...apptForm, type: e.target.value as any})} className="w-full p-2 border rounded-md mt-1">
+                    <select value={apptForm.type} onChange={e => setApptForm({...apptForm, type: e.target.value as any})} className="w-full p-2 text-sm sm:text-base border rounded-md mt-1">
                         <option>Check-in</option>
                         <option>Consultation</option>
                         <option>Onboarding</option>
@@ -1055,14 +1079,14 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                   </div>
                   <div>
                     <label className="text-xs font-bold uppercase text-slate-600">Notes</label>
-                    <textarea value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})} className="w-full p-2 border rounded-md mt-1 h-24"></textarea>
+                    <textarea value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})} className="w-full p-2 text-sm sm:text-base border rounded-md mt-1 h-20 sm:h-24 resize-none"></textarea>
                   </div>
                </div>
-               <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
-                  {selectedAppt && <button type="button" onClick={() => handleDeleteAppointment(selectedAppt.id)} className="text-sm text-red-600 font-bold hover:underline">Delete</button>}
-                  <div className="ml-auto">
-                    <button type="submit" disabled={savingAppt} className="bg-[#8C3A36] text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b]">
-                        {savingAppt ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Save Appointment'}
+               <div className="p-3 sm:p-4 bg-slate-50 border-t flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-0 sticky bottom-0">
+                  {selectedAppt && <button type="button" onClick={() => handleDeleteAppointment(selectedAppt.id)} className="text-xs sm:text-sm text-red-600 font-bold hover:underline py-2 sm:py-0">Delete</button>}
+                  <div className="sm:ml-auto w-full sm:w-auto">
+                    <button type="submit" disabled={savingAppt} className="w-full sm:w-auto bg-[#8C3A36] text-white px-4 sm:px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b] text-sm sm:text-base flex items-center justify-center gap-2">
+                        {savingAppt ? <><Loader2 className="w-4 h-4 animate-spin"/> Saving...</> : 'Save Appointment'}
                     </button>
                   </div>
                </div>
@@ -1071,19 +1095,19 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       )}
 
       {showInvoiceActionModal && selectedInvoiceAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                <div className="p-5 flex justify-between items-center border-b bg-slate-50">
-                    <h3 className="font-bold text-lg text-slate-800">Invoice Actions</h3>
-                    <button onClick={() => setShowInvoiceActionModal(false)} className="text-slate-500 hover:text-slate-800"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+                <div className="p-4 sm:p-5 flex justify-between items-center border-b bg-slate-50 sticky top-0">
+                    <h3 className="font-bold text-base sm:text-lg text-slate-800">Invoice Actions</h3>
+                    <button onClick={() => setShowInvoiceActionModal(false)} className="text-slate-500 hover:text-slate-800 p-1"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
                 </div>
-                <div className="p-6 space-y-6">
-                    <div>
-                        <p><span className="font-semibold text-slate-600">Client:</span> {client.name}</p>
-                        <p><span className="font-semibold text-slate-600">Amount:</span> {getCurrencySymbol(selectedInvoiceAction.currency)}{selectedInvoiceAction.amount.toFixed(2)}</p>
-                        <p>
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto flex-1">
+                    <div className="space-y-2">
+                        <p className="text-sm sm:text-base"><span className="font-semibold text-slate-600">Client:</span> <span className="break-words">{client.name}</span></p>
+                        <p className="text-sm sm:text-base"><span className="font-semibold text-slate-600">Amount:</span> {getCurrencySymbol(selectedInvoiceAction.currency)}{selectedInvoiceAction.amount.toFixed(2)}</p>
+                        <p className="text-sm sm:text-base">
                             <span className="font-semibold text-slate-600">Status:</span>
-                            <span className={`ml-2 font-medium ${selectedInvoiceAction.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'} px-1.5 py-0.5 rounded-full text-xs`}>
+                            <span className={`ml-2 font-medium ${selectedInvoiceAction.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'} px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs`}>
                                 {selectedInvoiceAction.status}
                             </span>
                         </p>
@@ -1098,7 +1122,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                                         type="text" 
                                         readOnly 
                                         value={`${window.location.origin}/#/portal/${client.portalAccessToken}?tab=billing`} 
-                                        className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-sm pr-20 text-slate-700" 
+                                        className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 sm:p-2.5 text-xs sm:text-sm pr-16 sm:pr-20 text-slate-700" 
                                     />
                                     <button 
                                         onClick={() => {
@@ -1106,25 +1130,25 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                                             setCopiedPaymentLink(true);
                                             setTimeout(() => setCopiedPaymentLink(false), 2000);
                                         }}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#7a2f2b] w-16"
+                                        className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 bg-[#8C3A36] text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-bold hover:bg-[#7a2f2b] w-14 sm:w-16"
                                     >
-                                        {copiedPaymentLink ? <CheckCircle className="w-4 h-4 mx-auto"/> : 'Copy'}
+                                        {copiedPaymentLink ? <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mx-auto"/> : 'Copy'}
                                     </button>
                                 </div>
-                                <p className="text-xs text-slate-500 mt-1">Share this link with your client to pay online.</p>
+                                <p className="text-[10px] sm:text-xs text-slate-500 mt-1">Share this link with your client to pay online.</p>
                             </div>
 
                             <button 
                                 onClick={handleMarkAsPaid}
-                                className="w-full py-2 bg-green-100 text-green-700 border border-green-200 font-bold rounded-lg text-sm hover:bg-green-200 transition-colors"
+                                className="w-full py-2 bg-green-100 text-green-700 border border-green-200 font-bold rounded-lg text-xs sm:text-sm hover:bg-green-200 transition-colors"
                             >
                                 Mark as Paid Manually
                             </button>
                         </>
                     )}
                 </div>
-                <div className="p-4 bg-slate-50 border-t flex justify-end">
-                    <button onClick={() => setShowInvoiceActionModal(false)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">
+                <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end sticky bottom-0">
+                    <button onClick={() => setShowInvoiceActionModal(false)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold text-xs sm:text-sm hover:bg-slate-300 w-full sm:w-auto">
                         Close
                     </button>
                 </div>

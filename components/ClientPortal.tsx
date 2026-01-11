@@ -380,12 +380,12 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     if (!meal) return null;
     const icon = type === 'breakfast' ? '🍳' : type === 'lunch' ? '🥗' : '🍽️';
     return (
-      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200/80 flex gap-4 items-start">
-        <div className="text-2xl pt-1">{icon}</div>
-        <div>
-          <h4 className="font-bold text-slate-800 capitalize">{meal.name}</h4>
-          <p className="text-xs text-slate-500 mt-1">{meal.ingredients?.join(', ')}</p>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs mt-2 font-medium">
+      <div className="bg-slate-50 p-3 sm:p-4 rounded-lg border border-slate-200/80 flex gap-3 sm:gap-4 items-start">
+        <div className="text-xl sm:text-2xl pt-1 flex-shrink-0">{icon}</div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-bold text-slate-800 capitalize text-sm sm:text-base">{meal.name}</h4>
+          <p className="text-xs text-slate-500 mt-1 line-clamp-2">{meal.ingredients?.join(', ')}</p>
+          <div className="flex flex-wrap gap-x-2 sm:gap-x-3 gap-y-1 text-[10px] sm:text-xs mt-2 font-medium">
             <span className="text-slate-600">{meal.calories} kcal</span><span className="text-blue-600">{meal.protein} P</span><span className="text-amber-600">{meal.carbs} C</span><span className="text-rose-600">{meal.fats} F</span>
           </div>
         </div>
@@ -396,12 +396,12 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
   const ShortcutCard: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
     <button
       onClick={onClick}
-      className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-[#8C3A36] transform hover:-translate-y-1 transition-all duration-200 flex flex-col items-center justify-center text-center group"
+      className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-[#8C3A36] transform hover:-translate-y-1 transition-all duration-200 flex flex-col items-center justify-center text-center group"
     >
-      <div className="w-12 h-12 bg-[#F9F5F5] text-[#8C3A36] rounded-full flex items-center justify-center mb-3 group-hover:bg-[#8C3A36] group-hover:text-white transition-colors">
+      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#F9F5F5] text-[#8C3A36] rounded-full flex items-center justify-center mb-2 sm:mb-3 group-hover:bg-[#8C3A36] group-hover:text-white transition-colors">
         {icon}
       </div>
-      <span className="font-bold text-slate-700 text-sm">{label}</span>
+      <span className="font-bold text-slate-700 text-xs sm:text-sm">{label}</span>
     </button>
   );
 
@@ -476,23 +476,23 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         );
       case 'food_diary':
         return (
-            <div className="grid lg:grid-cols-2 gap-8">
+            <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
                 <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 space-y-4">
-                    <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Log Your Meal</h2>
-                    <p className="text-sm text-slate-600">Upload a photo, write a description, or both. AI will provide instant analysis.</p>
-                    <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50">
+                    <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800">Log Your Meal</h2>
+                    <p className="text-xs sm:text-sm text-slate-600">Upload a photo, write a description, or both. AI will provide instant analysis.</p>
+                    <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-4 sm:p-6 text-center cursor-pointer hover:bg-slate-50">
                         <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0" onChange={(e) => e.target.files && setFoodImage(e.target.files[0])} />
-                        {foodImage ? <div className="flex flex-col items-center gap-2 text-[#8C3A36]"><CheckCircle className="w-8 h-8"/><span className="font-medium text-sm break-all">{foodImage.name}</span></div> : <div className="flex flex-col items-center gap-2 text-slate-500"><Camera className="w-8 h-8"/><span className="font-medium">Upload photo (optional)</span></div>}
+                        {foodImage ? <div className="flex flex-col items-center gap-2 text-[#8C3A36]"><CheckCircle className="w-6 h-6 sm:w-8 sm:h-8"/><span className="font-medium text-xs sm:text-sm break-all">{foodImage.name}</span></div> : <div className="flex flex-col items-center gap-2 text-slate-500"><Camera className="w-6 h-6 sm:w-8 sm:h-8"/><span className="font-medium text-xs sm:text-sm sm:text-base">Upload photo (optional)</span></div>}
                     </div>
                     <div>
-                        <textarea value={foodNote} onChange={(e) => setFoodNote(e.target.value)} placeholder="Or describe your meal here..." className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8C3A36]/20 focus:border-[#8C3A36] outline-none resize-none h-24 transition-all" />
+                        <textarea value={foodNote} onChange={(e) => setFoodNote(e.target.value)} placeholder="Or describe your meal here..." className="w-full p-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36]/20 focus:border-[#8C3A36] outline-none resize-none h-20 sm:h-24 transition-all" />
                     </div>
-                    <button onClick={handleFoodAnalysis} disabled={(!foodImage && !foodNote.trim()) || analyzingFood} className="w-full py-3 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b]">{analyzingFood ? <><Loader2 className="w-5 h-5 animate-spin" /> Analyzing...</> : "Analyze & Log Meal"}</button>
-                    {analysisResult && <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 animate-in fade-in duration-300"><h4 className="font-bold text-slate-800 mb-2">Analysis Result:</h4><p className="text-sm text-slate-700 whitespace-pre-wrap">{analysisResult}</p></div>}
+                    <button onClick={handleFoodAnalysis} disabled={(!foodImage && !foodNote.trim()) || analyzingFood} className="w-full py-2.5 sm:py-3 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base hover:bg-[#7a2f2b]">{analyzingFood ? <><Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> Analyzing...</> : "Analyze & Log Meal"}</button>
+                    {analysisResult && <div className="p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 animate-in fade-in duration-300"><h4 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Analysis Result:</h4><p className="text-xs sm:text-sm text-slate-700 whitespace-pre-wrap">{analysisResult}</p></div>}
                 </div>
                 <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                    <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-4">Your Diary</h2>
-                    <div className="space-y-3 max-h-[50vh] lg:max-h-[600px] overflow-y-auto pr-2">
+                    <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-3 sm:mb-4">Your Diary</h2>
+                    <div className="space-y-2 sm:space-y-3 max-h-[50vh] lg:max-h-[600px] overflow-y-auto pr-1 sm:pr-2">
                         {foodLogs.length > 0 ? foodLogs.map(log => { 
                             const isExpanded = expandedLogId === log.id; 
                             return (
@@ -519,33 +519,51 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         const upcoming = appointments.filter(a => new Date(a.date) >= new Date()), past = appointments.filter(a => new Date(a.date) < new Date());
         return (
             <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-6">Your Appointments</h2>
-                <div className="space-y-6">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-4 sm:mb-6">Your Appointments</h2>
+                <div className="space-y-4 sm:space-y-6">
                     <div>
-                        <h3 className="font-bold text-slate-600 mb-3 border-b pb-2">Upcoming</h3>
-                        {upcoming.length > 0 ? <div className="space-y-3">{upcoming.map(appt => <div key={appt.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center"><div><p className="font-bold text-slate-800">{new Date(appt.date).toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p><p className="text-sm text-slate-500">{appt.type}</p></div><span className={`px-2 py-1 text-xs font-bold rounded-full ${getStatusColor(appt.status)}`}>{appt.status}</span></div>)}</div> : <p className="text-slate-500 italic">No upcoming appointments.</p>}
+                        <h3 className="font-bold text-slate-600 mb-2 sm:mb-3 border-b pb-2 text-sm sm:text-base">Upcoming</h3>
+                        {upcoming.length > 0 ? <div className="space-y-2 sm:space-y-3">{upcoming.map(appt => <div key={appt.id} className="p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0"><div className="flex-1"><p className="font-bold text-slate-800 text-sm sm:text-base">{new Date(appt.date).toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p><p className="text-xs sm:text-sm text-slate-500">{appt.type}</p></div><span className={`px-2 py-1 text-[10px] sm:text-xs font-bold rounded-full ${getStatusColor(appt.status)}`}>{appt.status}</span></div>)}</div> : <p className="text-slate-500 italic text-sm">No upcoming appointments.</p>}
                     </div>
                     <div>
-                        <h3 className="font-bold text-slate-600 mb-3 border-b pb-2">Past</h3>
-                        {past.length > 0 ? <div className="space-y-3">{past.map(appt => <div key={appt.id} className="p-4 bg-slate-50/70 rounded-lg border border-slate-200/80 flex justify-between items-center opacity-70"><div><p className="font-bold text-slate-600">{new Date(appt.date).toLocaleDateString()}</p><p className="text-sm text-slate-500">{appt.type}</p></div><span className={`px-2 py-1 text-xs font-bold rounded-full ${getStatusColor(appt.status)}`}>{appt.status}</span></div>)}</div> : <p className="text-slate-500 italic">No past appointments.</p>}
+                        <h3 className="font-bold text-slate-600 mb-2 sm:mb-3 border-b pb-2 text-sm sm:text-base">Past</h3>
+                        {past.length > 0 ? <div className="space-y-2 sm:space-y-3">{past.map(appt => <div key={appt.id} className="p-3 sm:p-4 bg-slate-50/70 rounded-lg border border-slate-200/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 opacity-70"><div className="flex-1"><p className="font-bold text-slate-600 text-sm sm:text-base">{new Date(appt.date).toLocaleDateString()}</p><p className="text-xs sm:text-sm text-slate-500">{appt.type}</p></div><span className={`px-2 py-1 text-[10px] sm:text-xs font-bold rounded-full ${getStatusColor(appt.status)}`}>{appt.status}</span></div>)}</div> : <p className="text-slate-500 italic text-sm">No past appointments.</p>}
                     </div>
                 </div>
             </div>
         );
       case 'messages':
         return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-17rem)] sm:h-[calc(100vh-16rem)]">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 p-4 border-b">Messages</h2>
-                <div className="flex-1 p-4 space-y-4 overflow-y-auto flex flex-col">{messages.map(msg => <div key={msg.id} className={`flex flex-col max-w-xs sm:max-w-md ${msg.sender === 'client' ? 'self-end items-end' : 'self-start items-start'}`}><div className={`px-4 py-2 rounded-2xl ${msg.sender === 'client' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>{msg.content}</div><span className="text-xs text-slate-400 mt-1 px-1">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>)}<div ref={messagesEndRef} /></div>
-                <form onSubmit={handleSendMessage} className="p-4 border-t bg-slate-50 flex items-center gap-3 sticky bottom-0"><input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" /><button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50" disabled={!newMessage.trim()}><Send className="w-5 h-5"/></button></form>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-14rem)] sm:h-[calc(100vh-17rem)] lg:h-[calc(100vh-16rem)]">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 p-3 sm:p-4 border-b">Messages</h2>
+                <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto flex flex-col">{messages.map(msg => <div key={msg.id} className={`flex flex-col max-w-[75%] sm:max-w-xs lg:max-w-md ${msg.sender === 'client' ? 'self-end items-end' : 'self-start items-start'}`}><div className={`px-3 sm:px-4 py-2 rounded-2xl text-sm sm:text-base ${msg.sender === 'client' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>{msg.content}</div><span className="text-[10px] sm:text-xs text-slate-400 mt-1 px-1">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>)}<div ref={messagesEndRef} /></div>
+                <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t bg-slate-50 flex items-center gap-2 sm:gap-3 sticky bottom-0"><input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" /><button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50 flex-shrink-0" disabled={!newMessage.trim()}><Send className="w-4 h-4 sm:w-5 sm:h-5"/></button></form>
             </div>
         );
       case 'billing':
         return (
             <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-4">Your Invoices</h2>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-3 sm:mb-4">Your Invoices</h2>
+                <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+                    {/* Mobile Card View */}
+                    <div className="block sm:hidden space-y-3">
+                        {invoices.length > 0 ? invoices.map(inv => (
+                            <div key={inv.id} className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium">{new Date(inv.generatedAt).toLocaleDateString()}</p>
+                                        <p className="font-bold text-slate-800 mt-1">{getCurrencySymbol(inv.currency)}{inv.amount.toFixed(2)}</p>
+                                    </div>
+                                    <span className={`px-2 py-1 text-[10px] font-bold rounded-full ${getInvoiceStatusColor(inv.status)}`}>{inv.status}</span>
+                                </div>
+                                {(inv.status === 'Pending' || inv.status === 'Overdue') && paystackKey ? (
+                                    <button onClick={() => { setSelectedInvoice(inv); setShowPaymentModal(true); setPaymentStep('options');}} className="w-full mt-2 bg-[#8C3A36] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#7a2f2b]">Pay Now</button>
+                                ) : null}
+                            </div>
+                        )) : <p className="text-slate-500 text-center py-8 text-sm">No invoices found.</p>}
+                    </div>
+                    {/* Desktop Table View */}
+                    <table className="w-full text-left text-sm hidden sm:table">
                         <thead className="border-b text-slate-500"><tr><th className="py-2 px-3">Date</th><th className="py-2 px-3">Amount</th><th className="py-2 px-3">Status</th><th className="py-2 px-3 text-right">Action</th></tr></thead>
                         <tbody>
                           {invoices.length > 0 ? invoices.map(inv => (
@@ -600,41 +618,41 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       case 'overview':
       default:
         return (
-          <div className="space-y-8">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <ShortcutCard icon={<Utensils className="w-6 h-6"/>} label="Meal Plan" onClick={() => setActiveTab('meal_plan')} />
-              <ShortcutCard icon={<Camera className="w-6 h-6"/>} label="Food Diary" onClick={() => setActiveTab('food_diary')} />
-              <ShortcutCard icon={<Calendar className="w-6 h-6"/>} label="Appointments" onClick={() => setActiveTab('appointments')} />
-              <ShortcutCard icon={<MessageSquare className="w-6 h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
-              <ShortcutCard icon={<CreditCard className="w-6 h-6"/>} label="Billing" onClick={() => setActiveTab('billing')} />
+          <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+              <ShortcutCard icon={<Utensils className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Meal Plan" onClick={() => setActiveTab('meal_plan')} />
+              <ShortcutCard icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Food Diary" onClick={() => setActiveTab('food_diary')} />
+              <ShortcutCard icon={<Calendar className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Appointments" onClick={() => setActiveTab('appointments')} />
+              <ShortcutCard icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
+              <ShortcutCard icon={<CreditCard className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Billing" onClick={() => setActiveTab('billing')} />
             </div>
           
-            <div className="grid lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-8">
+            <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+                <div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
                     <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                        <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-4 flex items-center gap-2"><TrendingUp className="text-[#8C3A36]" /> Progress Snapshot</h2>
-                        {progressLogs.length > 1 ? <div className="h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={progressLogs}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} tick={{fontSize: 12}}/><YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{fontSize: 12}}/><Tooltip /><Line type="monotone" dataKey="weight" stroke="#8FAA41" strokeWidth={2} name="Weight (kg)" /></LineChart></ResponsiveContainer></div> : <p className="text-slate-500 text-center py-8">Not enough data to show a trend.</p>}
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" /> Progress Snapshot</h2>
+                        {progressLogs.length > 1 ? <div className="h-48 sm:h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={progressLogs}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} tick={{fontSize: 10}}/><YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{fontSize: 10}}/><Tooltip /><Line type="monotone" dataKey="weight" stroke="#8FAA41" strokeWidth={2} name="Weight (kg)" /></LineChart></ResponsiveContainer></div> : <p className="text-slate-500 text-center py-6 sm:py-8 text-sm">Not enough data to show a trend.</p>}
                     </div>
                     <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                        <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-4 flex items-center gap-2"><BadgePercent className="text-purple-500" /> Compliance Overview</h2>
-                        {progressLogs.length > 1 ? <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={progressLogs}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} tick={{fontSize: 12}} /><YAxis domain={[0, 100]} tick={{fontSize: 12}} /><Tooltip formatter={(value) => `${value}%`} /><Bar dataKey="complianceScore" fill="#8b5cf6" name="Compliance" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div> : <p className="text-slate-500 text-center py-8">Log progress to see compliance.</p>}
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><BadgePercent className="w-4 h-4 sm:w-5 sm:h-5 text-purple-500" /> Compliance Overview</h2>
+                        {progressLogs.length > 1 ? <div className="h-48 sm:h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={progressLogs}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} tick={{fontSize: 10}} /><YAxis domain={[0, 100]} tick={{fontSize: 10}} /><Tooltip formatter={(value) => `${value}%`} /><Bar dataKey="complianceScore" fill="#8b5cf6" name="Compliance" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div> : <p className="text-slate-500 text-center py-6 sm:py-8 text-sm">Log progress to see compliance.</p>}
                     </div>
                 </div>
-                <div className="space-y-8">
-                    <div className="bg-gradient-to-br from-[#8C3A36] to-[#7a2f2b] text-white p-6 rounded-xl shadow-lg">
-                        <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Brain/> AI Coach Insights</h3>
-                        <div className="min-h-[120px] text-sm opacity-90">{generatingInsight && <div className="flex items-center gap-2"><Loader2 className="animate-spin w-4 h-4" /> Generating...</div>}{insight || "Click for a personalized tip."}</div>
-                        <button onClick={handleGenerateInsight} disabled={generatingInsight} className="w-full mt-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg py-2 font-semibold disabled:opacity-50">{generatingInsight ? 'Thinking...' : 'Generate Tip'}</button>
+                <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+                    <div className="bg-gradient-to-br from-[#8C3A36] to-[#7a2f2b] text-white p-4 sm:p-6 rounded-xl shadow-lg">
+                        <h3 className="font-bold text-base sm:text-lg mb-2 flex items-center gap-2"><Brain className="w-4 h-4 sm:w-5 sm:h-5"/> AI Coach Insights</h3>
+                        <div className="min-h-[100px] sm:min-h-[120px] text-xs sm:text-sm opacity-90">{generatingInsight && <div className="flex items-center gap-2"><Loader2 className="animate-spin w-3.5 h-3.5 sm:w-4 sm:h-4" /> Generating...</div>}{insight || "Click for a personalized tip."}</div>
+                        <button onClick={handleGenerateInsight} disabled={generatingInsight} className="w-full mt-3 sm:mt-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg py-2 text-sm sm:text-base font-semibold disabled:opacity-50">{generatingInsight ? 'Thinking...' : 'Generate Tip'}</button>
                     </div>
-                    <div className="bg-white p-6 rounded-xl border border-slate-200">
-                        <h3 className="font-bold text-slate-800 mb-4">Current Stats</h3>
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg"><span className="font-medium text-slate-600 text-sm flex items-center gap-2"><TrendingUp className="w-4 h-4 text-[#8C3A36]" /> Weight</span><span className="font-bold text-slate-800">{currentStats.weight?.toFixed(1)} kg</span></div>
-                            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg"><span className="font-medium text-slate-600 text-sm flex items-center gap-2"><Droplet className="w-4 h-4 text-rose-500" /> Body Fat</span><div className="text-right">{currentStats.bodyFatPercent != null && <span className="font-bold text-slate-800">{currentStats.bodyFatPercent?.toFixed(1)} %</span>}{currentStats.bodyFatMass != null && <div className="text-xs text-slate-500 font-medium">{currentStats.bodyFatMass?.toFixed(1)} kg</div>}</div></div>
-                            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg"><span className="font-medium text-slate-600 text-sm flex items-center gap-2"><Dumbbell className="w-4 h-4 text-blue-500" /> Muscle Mass</span><div className="text-right">{currentStats.muscleMass != null && <span className="font-bold text-slate-800">{currentStats.muscleMass?.toFixed(1)} kg</span>}{currentStats.musclePercent != null && <div className="text-xs text-slate-500 font-medium">{currentStats.musclePercent?.toFixed(1)} %</div>}</div></div>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
+                        <h3 className="font-bold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Current Stats</h3>
+                        <div className="space-y-2 sm:space-y-3">
+                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#8C3A36]" /> Weight</span><span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.weight?.toFixed(1)} kg</span></div>
+                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" /> Body Fat</span><div className="text-right">{currentStats.bodyFatPercent != null && <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatPercent?.toFixed(1)} %</span>}{currentStats.bodyFatMass != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.bodyFatMass?.toFixed(1)} kg</div>}</div></div>
+                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Dumbbell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" /> Muscle Mass</span><div className="text-right">{currentStats.muscleMass != null && <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.muscleMass?.toFixed(1)} kg</span>}{currentStats.musclePercent != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.musclePercent?.toFixed(1)} %</div>}</div></div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-xl border border-slate-200"><h3 className="font-bold text-slate-800 mb-2">Your Goal:</h3><p className="font-semibold text-[#8C3A36] text-lg">{client.goal}</p></div>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200"><h3 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Your Goal:</h3><p className="font-semibold text-[#8C3A36] text-base sm:text-lg">{client.goal}</p></div>
                 </div>
             </div>
           </div>
@@ -646,14 +664,46 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     <>
       <div className="min-h-screen bg-slate-100 font-sans text-slate-800">
         <header className="bg-white shadow-sm sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0">
-            <div className="flex items-center gap-2">
-                <img src="https://nutritherapy.co.ke/wp-content/uploads/2024/08/Untitled-design-2024-08-28T154953.396.png" alt="NutriTherapy Solutions Logo" className="h-10" />
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+                <img src="https://nutritherapy.co.ke/wp-content/uploads/2024/08/Untitled-design-2024-08-28T154953.396.png" alt="NutriTherapy Solutions Logo" className="h-8 sm:h-10" />
+                <div className="relative sm:hidden">
+                    <button 
+                    onClick={() => {
+                        setShowNotifications(!showNotifications);
+                        setUnreadCount(0);
+                    }}
+                    className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+                    >
+                    <Bell className="w-5 h-5 text-slate-600" />
+                    {unreadCount > 0 && (
+                        <span className="absolute top-1 right-1 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                    )}
+                    </button>
+                    {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-2xl border border-slate-200 z-20 animate-in fade-in duration-150">
+                        <div className="p-3 font-bold border-b text-sm">Notifications</div>
+                        <div className="max-h-80 overflow-y-auto">
+                        {notifications.length > 0 ? notifications.map(n => (
+                            <div key={n.id} className="p-3 border-b hover:bg-slate-50 cursor-pointer" onClick={() => handleNotificationClick(n)}>
+                               <p className="text-xs font-semibold text-slate-800">
+                                {n.type === 'message' ? `New message from your nutritionist` : 
+                                 n.type === 'invoice' ? 'New Invoice Created' : 
+                                 'New Meal Plan Available'}
+                               </p>
+                               <p className="text-xs text-slate-600 line-clamp-2 mt-1">{n.content}</p>
+                               <p className="text-[10px] text-slate-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                            </div>
+                        )) : <p className="p-4 text-xs text-slate-500">No new notifications.</p>}
+                        </div>
+                    </div>
+                    )}
+                </div>
             </div>
-            <div className="flex items-center gap-4">
-                <div className="text-center sm:text-right">
-                <p className="font-bold">{client.name}</p>
-                <p className="text-sm text-slate-500">Your personal nutrition hub</p>
+            <div className="hidden sm:flex items-center gap-4">
+                <div className="text-right">
+                <p className="font-bold text-sm sm:text-base">{client.name}</p>
+                <p className="text-xs sm:text-sm text-slate-500">Your personal nutrition hub</p>
                 </div>
                  <div className="relative">
                     <button 
@@ -663,14 +713,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                     }}
                     className="p-2 rounded-full hover:bg-slate-100 transition-colors"
                     >
-                    <Bell className="w-6 h-6 text-slate-600" />
+                    <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-slate-600" />
                     {unreadCount > 0 && (
                         <span className="absolute top-1 right-1 block h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>
                     )}
                     </button>
                     {showNotifications && (
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-2xl border border-slate-200 z-20 animate-in fade-in duration-150">
-                        <div className="p-3 font-bold border-b">Notifications</div>
+                        <div className="p-3 font-bold border-b text-sm">Notifications</div>
                         <div className="max-h-96 overflow-y-auto">
                         {notifications.length > 0 ? notifications.map(n => (
                             <div key={n.id} className="p-3 border-b hover:bg-slate-50 cursor-pointer" onClick={() => handleNotificationClick(n)}>
@@ -689,17 +739,17 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                 </div>
             </div>
           </div>
-          <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex border-t border-slate-200 overflow-x-auto">
+          <nav className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 flex border-t border-slate-200 overflow-x-auto -mx-3 sm:mx-0" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 }, { id: 'meal_plan', label: 'Meal Plan', icon: Utensils }, { id: 'food_diary', label: 'Food Diary', icon: Camera }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'messages', label: 'Messages', icon: MessageSquare }, { id: 'billing', label: 'Billing', icon: CreditCard }
             ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-                <tab.icon className="w-4 h-4"/>{tab.label}
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"/><span>{tab.label}</span>
               </button>
             ))}
           </nav>
         </header>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
           {renderContent()}
         </main>
         <footer className="text-center py-4 text-xs text-slate-400">
@@ -708,37 +758,37 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       </div>
 
       {showPaymentModal && selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="bg-slate-900 p-5 text-white flex justify-between items-center">
-                 <h3 className="font-bold text-lg">Pay Invoice</h3>
-                 <button onClick={() => setShowPaymentModal(false)}><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+           <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+              <div className="bg-slate-900 p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+                 <h3 className="font-bold text-base sm:text-lg">Pay Invoice</h3>
+                 <button onClick={() => setShowPaymentModal(false)} className="p-1"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
               </div>
-              <div className="p-6">
-                <div className="bg-slate-50 p-4 rounded-lg text-center mb-6 border border-slate-200">
-                  <p className="text-sm text-slate-500">Amount Due</p>
-                  <p className="text-4xl font-bold text-[#8C3A36]">{getCurrencySymbol(selectedInvoice.currency)}{selectedInvoice.amount.toFixed(2)}</p>
-                  <p className="text-xs text-slate-400 mt-1">For: {selectedInvoice.items[0].description}</p>
+              <div className="p-4 sm:p-6">
+                <div className="bg-slate-50 p-3 sm:p-4 rounded-lg text-center mb-4 sm:mb-6 border border-slate-200">
+                  <p className="text-xs sm:text-sm text-slate-500">Amount Due</p>
+                  <p className="text-3xl sm:text-4xl font-bold text-[#8C3A36]">{getCurrencySymbol(selectedInvoice.currency)}{selectedInvoice.amount.toFixed(2)}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-400 mt-1">For: {selectedInvoice.items[0]?.description || 'Invoice'}</p>
                 </div>
                 {paymentStep === 'options' && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold text-slate-600 text-center uppercase">Select Payment Method</h4>
-                    <button onClick={handlePaystackPayment} className="w-full flex items-center justify-center gap-3 p-4 border-2 border-slate-200 hover:border-[#8C3A36] rounded-lg transition-colors"><CreditCard className="w-6 h-6 text-blue-500"/><span className="font-bold text-slate-700">Pay with Card / Bank</span></button>
-                    <button onClick={() => setPaymentStep('mpesa')} className="w-full flex items-center justify-center gap-3 p-4 border-2 border-slate-200 hover:border-[#8C3A36] rounded-lg transition-colors"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/M-PESA_LOGO-01.svg/2560px-M-PESA_LOGO-01.svg.png" alt="M-Pesa" className="w-16"/><span className="font-bold text-slate-700">Pay with M-Pesa</span></button>
+                  <div className="space-y-2 sm:space-y-3">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-600 text-center uppercase">Select Payment Method</h4>
+                    <button onClick={handlePaystackPayment} className="w-full flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 border-2 border-slate-200 hover:border-[#8C3A36] rounded-lg transition-colors text-sm sm:text-base"><CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500"/><span className="font-bold text-slate-700">Pay with Card / Bank</span></button>
+                    <button onClick={() => setPaymentStep('mpesa')} className="w-full flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 border-2 border-slate-200 hover:border-[#8C3A36] rounded-lg transition-colors text-sm sm:text-base"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/M-PESA_LOGO-01.svg/2560px-M-PESA_LOGO-01.svg.png" alt="M-Pesa" className="w-12 sm:w-16"/><span className="font-bold text-slate-700">Pay with M-Pesa</span></button>
                   </div>
                 )}
                 {paymentStep === 'mpesa' && (
-                   <div className="space-y-4 animate-in fade-in duration-300">
+                   <div className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
                       <button onClick={() => setPaymentStep('options')} className="text-xs text-slate-500 hover:underline">{'< Back'}</button>
-                      <h4 className="text-sm font-bold text-slate-600 text-center uppercase">M-Pesa Payment</h4>
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-600 text-center uppercase">M-Pesa Payment</h4>
                       <div>
                         <label className="text-xs font-bold text-slate-500">Safaricom Phone Number</label>
-                        <input type="tel" value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} placeholder="e.g. 0712345678" className="w-full mt-1 p-2 border border-slate-300 rounded-lg"/>
+                        <input type="tel" value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} placeholder="e.g. 0712345678" className="w-full mt-1 p-2.5 sm:p-3 border border-slate-300 rounded-lg text-sm sm:text-base"/>
                       </div>
-                      <button onClick={handleMpesaPayment} disabled={!mpesaPhone || processingPayment} className="w-full py-3 bg-[#8FAA41] text-white font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50">
-                        {processingPayment ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Confirm & Pay'}
+                      <button onClick={handleMpesaPayment} disabled={!mpesaPhone || processingPayment} className="w-full py-2.5 sm:py-3 bg-[#8FAA41] text-white font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base">
+                        {processingPayment ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : 'Confirm & Pay'}
                       </button>
-                      <p className="text-xs text-slate-500 text-center">You will receive a payment prompt on your phone.</p>
+                      <p className="text-[10px] sm:text-xs text-slate-500 text-center">You will receive a payment prompt on your phone.</p>
                    </div>
                 )}
               </div>
