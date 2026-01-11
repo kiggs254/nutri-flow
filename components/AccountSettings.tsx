@@ -93,7 +93,7 @@ const AccountSettings: React.FC = () => {
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Cpu className="w-5 h-5 text-[#8C3A36]" /> AI Preferences</h2>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-3 gap-4">
                     <div 
                         onClick={() => handleProviderChange('gemini')}
                         className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${selectedProvider === 'gemini' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
@@ -121,6 +121,20 @@ const AccountSettings: React.FC = () => {
                         </div>
                          {selectedProvider === 'openai' && <CheckCircle className="w-5 h-5 text-[#8C3A36] ml-auto" />}
                     </div>
+
+                    <div 
+                        onClick={() => handleProviderChange('deepseek')}
+                        className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${selectedProvider === 'deepseek' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
+                    >
+                        <div className="p-2 bg-white rounded-lg shadow-sm">
+                           <Brain className={`w-6 h-6 ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
+                        </div>
+                        <div>
+                            <h3 className={`font-bold ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>DeepSeek</h3>
+                            <p className="text-sm text-slate-500">Cost-effective AI with strong reasoning. Great alternative to OpenAI.</p>
+                        </div>
+                         {selectedProvider === 'deepseek' && <CheckCircle className="w-5 h-5 text-[#8C3A36] ml-auto" />}
+                    </div>
                 </div>
 
                 {selectedProvider === 'openai' && (
@@ -136,7 +150,7 @@ const AccountSettings: React.FC = () => {
                                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
                             />
                         </div>
-                        <p className="text-xs text-slate-500">Your key is stored securely in your browser's local storage and is never sent to our servers, only directly to OpenAI.</p>
+                        <p className="text-xs text-slate-500">Note: API keys are now managed server-side via Supabase Edge Functions for enhanced security.</p>
                     </div>
                 )}
             </div>

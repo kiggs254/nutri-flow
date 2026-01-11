@@ -129,11 +129,11 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
   return (
     <div>
       {!compact && (
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-slate-900">Clients</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 md:mb-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Clients</h2>
           <button 
             onClick={() => setShowAddModal(true)}
-            className="bg-[#8C3A36] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#7a2f2b] flex items-center gap-2 transition-colors shadow-sm"
+            className="w-full sm:w-auto bg-[#8C3A36] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#7a2f2b] flex items-center justify-center gap-2 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" /> Add Client
           </button>
@@ -142,7 +142,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
 
       <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${compact ? '' : 'min-h-[400px]'}`}>
         {!compact && (
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-4 items-center">
+          <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
             <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
@@ -151,19 +151,19 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none transition-all"
               />
             </div>
-            <button onClick={onRefresh} className="p-2 text-slate-500 hover:text-[#8C3A36] transition-colors">
+            <button onClick={onRefresh} className="p-2 text-slate-500 hover:text-[#8C3A36] transition-colors self-start sm:self-auto">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         )}
 
         {loading && clients.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
+          <div className="p-8 sm:p-12 text-center text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-[#8C3A36]" />
             <p>Loading clients...</p>
           </div>
         ) : clients.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
+          <div className="p-8 sm:p-12 text-center text-slate-500">
             <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Users className="w-6 h-6 text-slate-400" />
             </div>
@@ -171,18 +171,68 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              {!compact && (
-                <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-medium">
-                  <tr>
-                    <th className="px-6 py-4">Name</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Goal</th>
-                    <th className="px-6 py-4">Last Check-in</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-              )}
+            {/* Mobile Card View */}
+            <div className="block md:hidden divide-y divide-slate-100">
+              {clients.map(client => (
+                <div
+                  key={client.id}
+                  onClick={() => onSelectClient?.(client)}
+                  className={`p-4 transition-colors cursor-pointer ${
+                    selectedClientId === client.id ? 'bg-[#F9F5F5]' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="relative flex-shrink-0">
+                        <img src={client.avatarUrl} alt={client.name} className="w-12 h-12 rounded-full object-cover bg-slate-200 border border-slate-200" />
+                        {selectedClientId === client.id && (
+                          <div className="absolute -right-1 -bottom-1 bg-[#8FAA41] text-white rounded-full p-0.5 border-2 border-white">
+                            <Check className="w-2 h-2" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`font-medium text-base truncate ${selectedClientId === client.id ? 'text-[#8C3A36]' : 'text-slate-900'}`}>
+                          {client.name}
+                        </div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                          <Mail className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{client.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                            ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                              client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
+                              'bg-slate-100 text-slate-800'}`}>
+                            {client.status}
+                          </span>
+                          <span className="text-xs text-slate-600 truncate">{client.goal}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={(e) => handleDeleteClient(e, client.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                      title="Delete Client"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Desktop Table View */}
+            <table className="w-full text-left hidden md:table">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-medium">
+                <tr>
+                  <th className="px-6 py-4">Name</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Goal</th>
+                  <th className="px-6 py-4">Last Check-in</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-slate-100">
                 {clients.map(client => (
                   <tr 
@@ -193,7 +243,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                       ${selectedClientId === client.id ? 'bg-[#F9F5F5]' : 'hover:bg-slate-50'}
                     `}
                   >
-                    <td className={`px-6 py-4 ${compact ? 'py-3 px-4' : ''}`}>
+                    <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <img src={client.avatarUrl} alt={client.name} className="w-10 h-10 rounded-full object-cover bg-slate-200 border border-slate-200" />
@@ -208,36 +258,32 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                             {client.name}
                           </div>
                           <div className="text-xs text-slate-500 flex items-center gap-1">
-                             {compact ? client.goal : <><Mail className="w-3 h-3" /> {client.email}</>}
+                            <Mail className="w-3 h-3" /> {client.email}
                           </div>
                         </div>
                       </div>
                     </td>
-                    {!compact && (
-                      <>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                            ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                              client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
-                              'bg-slate-100 text-slate-800'}`}>
-                            {client.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">{client.goal}</td>
-                        <td className="px-6 py-4 text-sm text-slate-500">
-                           {client.lastCheckIn}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={(e) => handleDeleteClient(e, client.id)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                            title="Delete Client"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </>
-                    )}
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                        ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                          client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
+                          'bg-slate-100 text-slate-800'}`}>
+                        {client.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{client.goal}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">
+                       {client.lastCheckIn}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={(e) => handleDeleteClient(e, client.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        title="Delete Client"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

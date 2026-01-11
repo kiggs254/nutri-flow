@@ -451,10 +451,10 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   };
   
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
+    <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
       <div className="lg:col-span-1 space-y-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><ChefHat className="w-5 h-5 text-[#8C3A36]"/> AI Meal Plan Generator</h2>
+          <h2 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><ChefHat className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]"/> AI Meal Plan Generator</h2>
           <div className="space-y-4">
 
             <EditableField label="Custom Instructions (for this plan only)" value={params.customInstructions || ''} onChange={v => handleParamChange('customInstructions', v)} type="textarea" />
@@ -473,7 +473,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Save className="w-5 h-5 text-[#8C3A36]"/> Saved Plans</h3>
+          <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><Save className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]"/> Saved Plans</h3>
           <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
             {savedPlans.length > 0 ? savedPlans.map(p => (
               <div key={p.id} className="group flex items-center justify-between p-3 bg-slate-50 rounded-lg border hover:bg-slate-100">
@@ -498,21 +498,21 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         {plan && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 p-4 sm:p-0">
-                {isEditing ? <input value={planLabel} onChange={(e) => setPlanLabel(e.target.value)} className="text-lg font-bold text-slate-800 bg-slate-100 rounded-md p-1 -m-1" /> : <h3 className="text-lg font-bold text-slate-800">{planLabel}</h3>}
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setShowShoppingList(true)} className="px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200"><ShoppingCart className="w-4 h-4"/> Shopping List</button>
-                    <button onClick={handlePrint} className="px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200"><Printer className="w-4 h-4"/> Print Plan</button>
-                    <button onClick={() => setIsEditing(!isEditing)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors ${isEditing ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 hover:bg-slate-200'}`}>
-                        {isEditing ? <Check className="w-4 h-4"/> : <Edit2 className="w-4 h-4"/>} {isEditing ? 'Done' : 'Edit'}
+                {isEditing ? <input value={planLabel} onChange={(e) => setPlanLabel(e.target.value)} className="text-base sm:text-lg font-bold text-slate-800 bg-slate-100 rounded-md p-1 -m-1 w-full sm:w-auto" /> : <h3 className="text-base sm:text-lg font-bold text-slate-800 truncate">{planLabel}</h3>}
+                <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => setShowShoppingList(true)} className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200"><ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> <span className="hidden sm:inline">Shopping List</span><span className="sm:hidden">List</span></button>
+                    <button onClick={handlePrint} className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200"><Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> <span className="hidden sm:inline">Print Plan</span><span className="sm:hidden">Print</span></button>
+                    <button onClick={() => setIsEditing(!isEditing)} className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-colors ${isEditing ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 hover:bg-slate-200'}`}>
+                        {isEditing ? <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4"/> : <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4"/>} {isEditing ? 'Done' : 'Edit'}
                     </button>
-                    <button onClick={handleSavePlan} disabled={saving} className="px-4 py-1.5 bg-[#8C3A36] text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 hover:bg-[#7a2f2b] disabled:opacity-50">
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} {saving ? 'Saving...' : 'Save Plan'}
+                    <button onClick={handleSavePlan} disabled={saving} className="px-3 sm:px-4 py-1.5 bg-[#8C3A36] text-white rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 hover:bg-[#7a2f2b] disabled:opacity-50">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin"/> : <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4"/>} {saving ? 'Saving...' : <span className="hidden sm:inline">Save Plan</span>}
                     </button>
                 </div>
             </div>
             {planAnalytics && (
-                <div className="bg-slate-50 rounded-xl border p-4 grid md:grid-cols-2 gap-4 items-center">
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-xl border p-3 sm:p-4 grid md:grid-cols-2 gap-3 sm:gap-4 items-center">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         <div className="bg-white p-3 rounded-lg border text-center"><p className="text-xs font-bold text-slate-400 uppercase">Avg Cals</p><p className="text-xl font-bold text-[#8C3A36]">{planAnalytics.avgCalories}</p></div>
                         <div className="bg-white p-3 rounded-lg border text-center"><p className="text-xs font-bold text-slate-400 uppercase">Protein</p><p className="text-xl font-bold text-blue-600">{planAnalytics.avgProtein}g</p></div>
                         <div className="bg-white p-3 rounded-lg border text-center"><p className="text-xs font-bold text-slate-400 uppercase">Carbs</p><p className="text-xl font-bold text-amber-500">{planAnalytics.avgCarbs}g</p></div>

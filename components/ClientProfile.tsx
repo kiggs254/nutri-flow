@@ -608,12 +608,12 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   ];
 
   const StatCard: React.FC<{ label: string; value: string | number; unit?: string; icon: React.ReactNode }> = ({ label, value, unit, icon }) => (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex items-center gap-4">
-      <div className="p-2 bg-white rounded-full shadow-sm">{icon}</div>
-      <div>
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
-        <p className="text-xl font-bold text-slate-800">
-          {value} <span className="text-sm font-normal text-slate-500">{unit}</span>
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+      <div className="p-1.5 sm:p-2 bg-white rounded-full shadow-sm flex-shrink-0">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] sm:text-xs text-slate-500 font-medium uppercase tracking-wider truncate">{label}</p>
+        <p className="text-lg sm:text-xl font-bold text-slate-800 truncate">
+          {value} <span className="text-xs sm:text-sm font-normal text-slate-500">{unit}</span>
         </p>
       </div>
     </div>
@@ -623,12 +623,12 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     switch (activeTab) {
       case 'overview':
         return (
-          <div className="space-y-6">
-             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-               <StatCard label="Age" value={client.age ?? 'N/A'} unit="yrs" icon={<User className="w-5 h-5 text-[#8C3A36]" />} />
-               <StatCard label="Weight" value={client.weight ?? 'N/A'} unit="kg" icon={<Activity className="w-5 h-5 text-[#8C3A36]" />} />
-               <StatCard label="Body Fat" value={client.bodyFatPercentage ?? 'N/A'} unit="%" icon={<Droplet className="w-5 h-5 text-rose-500" />} />
-               <StatCard label="Muscle Mass" value={client.skeletalMuscleMass ?? 'N/A'} unit="kg" icon={<Dumbbell className="w-5 h-5 text-blue-500" />} />
+          <div className="space-y-4 sm:space-y-6">
+             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+               <StatCard label="Age" value={client.age ?? 'N/A'} unit="yrs" icon={<User className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />} />
+               <StatCard label="Weight" value={client.weight ?? 'N/A'} unit="kg" icon={<Activity className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />} />
+               <StatCard label="Body Fat" value={client.bodyFatPercentage ?? 'N/A'} unit="%" icon={<Droplet className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500" />} />
+               <StatCard label="Muscle Mass" value={client.skeletalMuscleMass ?? 'N/A'} unit="kg" icon={<Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />} />
              </div>
              
              <div className="bg-white rounded-lg border p-6">
@@ -663,8 +663,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         );
       case 'food':
         return (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg border p-6 space-y-4">
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
                 <h3 className="text-lg font-bold text-slate-800">Analyze Client Food Photo</h3>
                 <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
                     <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setFoodImage(e.target.files[0])} />
@@ -684,8 +684,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                     </div>
                 )}
             </div>
-            <div className="bg-white rounded-lg border p-6">
-                 <h3 className="text-lg font-bold text-slate-800 mb-4">Recent Food Logs</h3>
+            <div className="bg-white rounded-lg border p-4 sm:p-6">
+                 <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4">Recent Food Logs</h3>
                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                     {foodLogs.length > 0 ? foodLogs.map(log => (
                         <div key={log.id} className="p-3 bg-slate-50 rounded-md border flex gap-3 items-start">
@@ -702,8 +702,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         );
       case 'messages':
         return (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-20rem)]">
-              <div className="flex-1 p-4 space-y-4 overflow-y-auto flex flex-col">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
+              <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto flex flex-col">
                   {messages.map(msg => (
                       <div key={msg.id} className={`flex flex-col max-w-sm sm:max-w-md ${msg.sender === 'nutritionist' ? 'self-end items-end' : 'self-start items-start'}`}>
                           <div className={`px-4 py-2 rounded-2xl ${msg.sender === 'nutritionist' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
@@ -714,16 +714,16 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                   ))}
                   <div ref={messagesEndRef} />
               </div>
-              <form onSubmit={handleSendMessage} className="p-4 border-t bg-slate-50 flex items-center gap-3 sticky bottom-0">
-                  <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" />
-                  <button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50" disabled={!newMessage.trim()}><Send className="w-5 h-5"/></button>
+              <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t bg-slate-50 flex items-center gap-2 sm:gap-3 sticky bottom-0">
+                  <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" />
+                  <button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50 flex-shrink-0" disabled={!newMessage.trim()}><Send className="w-4 h-4 sm:w-5 sm:h-5"/></button>
               </form>
           </div>
         );
       case 'medical':
         return (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg border p-6 space-y-4">
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
               <h3 className="text-lg font-bold text-slate-800">Medical & Dietary Information</h3>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Medical History / Conditions</label>
@@ -900,46 +900,46 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
   return (
     <div className="animate-in fade-in duration-300">
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to Client List
+          <ArrowLeft className="w-4 h-4" /> <span className="hidden sm:inline">Back to Client List</span><span className="sm:hidden">Back</span>
         </button>
         <button onClick={() => setShowShareModal(true)} className="bg-white border border-slate-200 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-slate-50">
            <Share2 className="w-4 h-4 text-[#8C3A36]"/> Share Client Portal
         </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-start gap-6 mb-6">
-        <img src={client.avatarUrl} alt={client.name} className="w-24 h-24 rounded-full object-cover bg-slate-200 border-4 border-white shadow-md"/>
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">{client.name}</h1>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-500 mt-2">
-             <span className="flex items-center gap-1.5 text-sm"><Mail className="w-4 h-4"/> {client.email}</span>
-             <span className="flex items-center gap-1.5 text-sm"><MapPin className="w-4 h-4"/> Joined: {new Date(client.joinedAt).toLocaleDateString()}</span>
-             <span className="flex items-center gap-1.5 text-sm"><DollarSign className="w-4 h-4"/> Plan: Pro</span>
+      <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 mb-4 sm:mb-6">
+        <img src={client.avatarUrl} alt={client.name} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover bg-slate-200 border-4 border-white shadow-md flex-shrink-0"/>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 truncate">{client.name}</h1>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 sm:gap-x-4 gap-y-1 text-slate-500 mt-2">
+             <span className="flex items-center gap-1.5 text-xs sm:text-sm truncate"><Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0"/> <span className="truncate">{client.email}</span></span>
+             <span className="flex items-center gap-1.5 text-xs sm:text-sm"><MapPin className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0"/> Joined: {new Date(client.joinedAt).toLocaleDateString()}</span>
+             <span className="flex items-center gap-1.5 text-xs sm:text-sm"><DollarSign className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0"/> Plan: Pro</span>
           </div>
-          <p className="mt-2 text-sm font-semibold text-[#8C3A36] bg-[#F9F5F5] px-3 py-1 rounded-full inline-block border border-stone-200">
+          <p className="mt-2 text-xs sm:text-sm font-semibold text-[#8C3A36] bg-[#F9F5F5] px-3 py-1 rounded-full inline-block border border-stone-200">
              Goal: {client.goal}
           </p>
         </div>
       </div>
       
-      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide">
+      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide -mx-3 sm:mx-0 px-3 sm:px-0">
         {tabItems.map(tab => (
           <button 
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0
               ${activeTab === tab.id 
                 ? 'border-b-2 border-[#8C3A36] text-[#8C3A36]' 
                 : 'text-slate-500 hover:text-slate-800'}`}
           >
-            <tab.icon className="w-4 h-4" /> {tab.label}
+            <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> <span>{tab.label}</span>
           </button>
         ))}
       </div>
       
-      <div className="mt-6">
+      <div className="mt-4 sm:mt-6">
         {renderContent()}
       </div>
 

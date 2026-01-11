@@ -178,25 +178,25 @@ const Billing: React.FC<{onClientClick: (client: Client) => void}> = ({onClientC
   }
 
   return (
-    <div className="space-y-6">
-       <h1 className="text-2xl font-bold text-slate-900">Billing & Payments</h1>
+    <div className="space-y-4 sm:space-y-6">
+       <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Billing & Payments</h1>
       
-      {error && <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center gap-3"><AlertCircle />{error}</div>}
+      {error && <div className="bg-red-50 text-red-700 p-3 sm:p-4 rounded-lg flex items-center gap-3 text-sm sm:text-base"><AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />{error}</div>}
       
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-           <h3 className="text-slate-500 text-sm font-medium mb-1 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Total Revenue (Paid)</h3>
-           <div className="text-3xl font-bold text-slate-900">{getCurrencySymbol(settings.currency)}{stats.total.toFixed(2)}</div>
+      <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
+           <h3 className="text-slate-500 text-xs sm:text-sm font-medium mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Total Revenue (Paid)</h3>
+           <div className="text-2xl sm:text-3xl font-bold text-slate-900">{getCurrencySymbol(settings.currency)}{stats.total.toFixed(2)}</div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-           <h3 className="text-slate-500 text-sm font-medium mb-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Outstanding Amount</h3>
-           <div className="text-3xl font-bold text-slate-900">{getCurrencySymbol(settings.currency)}{stats.pending.toFixed(2)}</div>
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
+           <h3 className="text-slate-500 text-xs sm:text-sm font-medium mb-1 flex items-center gap-2"><AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Outstanding Amount</h3>
+           <div className="text-2xl sm:text-3xl font-bold text-slate-900">{getCurrencySymbol(settings.currency)}{stats.pending.toFixed(2)}</div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Settings className="w-5 h-5 text-[#8C3A36]"/> Billing Settings</h2>
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-1 bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
+          <h2 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><Settings className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]"/> Billing Settings</h2>
           {loadingSettings ? <Loader2 className="animate-spin" /> : (
             <form onSubmit={handleSaveSettings} className="space-y-4">
               <div>
