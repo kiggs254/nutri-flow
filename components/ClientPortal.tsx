@@ -301,18 +301,38 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     try {
       let publicUrl: string | null = null, base64: string | null = null, mimeType: string | null = null;
       if (foodImage) {
-        const filePath = `${client.id}/${new Date().getTime()}.${foodImage.name.split('.').pop()}`;
-        const { error: uploadError } = await supabase.storage.from('food_logs').upload(filePath, foodImage);
-        if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
-        const { data } = supabase.storage.from('food_logs').getPublicUrl(filePath);
-        publicUrl = data.publicUrl;
-        if (!publicUrl) throw new Error("Could not get image URL after upload.");
+        // Read file for AI analysis first
         await new Promise<void>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onloadend = () => { try { base64 = (reader.result as string).split(',')[1]; mimeType = foodImage.type; resolve(); } catch (e) { reject(e); } };
-          reader.onerror = reject; reader.readAsDataURL(foodImage);
+          reader.onloadend = () => { 
+            try { 
+              base64 = (reader.result as string).split(',')[1]; 
+              mimeType = foodImage.type; 
+              resolve(); 
+            } catch (e) { 
+              reject(e); 
+            } 
+          };
+          reader.onerror = reject; 
+          reader.readAsDataURL(foodImage);
         });
+
+        // Try to upload to storage, but don't fail if it doesn't work
+        const filePath = `${client.id}/${new Date().getTime()}.${foodImage.name.split('.').pop()}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage.from('food_logs').upload(filePath, foodImage, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        
+        if (uploadError) {
+          console.warn('Storage upload failed:', uploadError);
+          // Continue without image URL - we can still save the log with AI analysis
+        } else {
+          const { data: urlData } = supabase.storage.from('food_logs').getPublicUrl(filePath);
+          publicUrl = urlData?.publicUrl || null;
+        }
       }
+      
       const result = await analyzeFoodImage(base64, mimeType, foodNote.trim(), client.goal);
       setAnalysisResult(result);
       
@@ -325,10 +345,22 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
 
       if (insertError) throw insertError;
 
-      if (newLog) setFoodLogs([newLog as FoodLog, ...foodLogs]);
-      setFoodImage(null); setFoodNote('');
+      if (newLog) {
+        const formattedLog: FoodLog = {
+          id: newLog.id,
+          clientId: newLog.client_id,
+          aiAnalysis: newLog.ai_analysis,
+          imageUrl: newLog.image_url,
+          notes: newLog.notes,
+          createdAt: newLog.created_at
+        };
+        setFoodLogs([formattedLog, ...foodLogs]);
+      }
+      setFoodImage(null); 
+      setFoodNote('');
     } catch (e: any) {
       setAnalysisResult("Error processing food log: " + e.message);
+      console.error('Food log error:', e);
     } finally {
       setAnalyzingFood(false);
     }

@@ -160,7 +160,7 @@ WITH CHECK (
   check_client_owner( (storage.foldername(name))[1]::uuid )
 );
 
--- Food Logs Policies (Public Read, Anon Write)
+-- Food Logs Policies (Public Read, Anon Write/Update/Delete)
 CREATE POLICY "Public can view food logs"
 ON storage.objects FOR SELECT
 TO public
@@ -170,4 +170,15 @@ CREATE POLICY "Portal can upload food logs"
 ON storage.objects FOR INSERT
 TO anon
 WITH CHECK ( bucket_id = 'food_logs' );
+
+CREATE POLICY "Portal can update food logs"
+ON storage.objects FOR UPDATE
+TO anon
+USING ( bucket_id = 'food_logs' )
+WITH CHECK ( bucket_id = 'food_logs' );
+
+CREATE POLICY "Portal can delete food logs"
+ON storage.objects FOR DELETE
+TO anon
+USING ( bucket_id = 'food_logs' );
 `;
