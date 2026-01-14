@@ -353,7 +353,7 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
     
     ${params.referenceData ? "An image has been attached as reference material." : ""}
     
-    Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.
+    Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.${params.excludeLunch ? '\n\nIMPORTANT: Do NOT include lunch in any day of the meal plan. Only provide breakfast, dinner, and snacks for each day.' : ''}
     
     CRITICAL: You MUST consider and factor in ALL provided information including:
     - Medical history and conditions
@@ -395,6 +395,10 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
         );
       } else {
         // OpenAI and DeepSeek implementation
+        const lunchInstruction = params.excludeLunch 
+          ? `\nIMPORTANT: Do NOT include lunch in the meal plan. Only provide breakfast, dinner, and snacks. Set "lunch" to null or omit it entirely.`
+          : '';
+        
         const openAISystemPrompt = systemInstruction + `
 
 JSON OUTPUT FORMAT (MANDATORY):
@@ -403,11 +407,11 @@ JSON OUTPUT FORMAT (MANDATORY):
   {
     "day": "Monday",
     "breakfast": { /* Meal object */ },
-    "lunch": { /* Meal object */ },
+    "lunch": ${params.excludeLunch ? 'null' : '{ /* Meal object */ }'},
     "dinner": { /* Meal object */ },
     "snacks": [ /* array of Meal objects */ ]
   }
-- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
+- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".${lunchInstruction}
 `;
         
         let imageBase64: string | undefined;
@@ -461,16 +465,43 @@ JSON OUTPUT FORMAT (MANDATORY):
         const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
         if (!breakfast && !lunch && !dinner && meals && meals.length) {
           breakfast = meals[0] ?? null;
-          lunch = meals[1] ?? null;
-          dinner = meals[2] ?? null;
-          const extraSnacks = meals.slice(3);
-          if (extraSnacks.length > 0) {
-            snacks = snacks.concat(extraSnacks);
+          // If excludeLunch is true, skip lunch (meals[1]) and map meals[2] to dinner
+          if (params.excludeLunch) {
+            lunch = null;
+            dinner = meals[1] ?? null;
+            const extraSnacks = meals.slice(2);
+            if (extraSnacks.length > 0) {
+              snacks = snacks.concat(extraSnacks);
+            }
+          } else {
+            lunch = meals[1] ?? null;
+            dinner = meals[2] ?? null;
+            const extraSnacks = meals.slice(3);
+            if (extraSnacks.length > 0) {
+              snacks = snacks.concat(extraSnacks);
+            }
           }
+        } else if (params.excludeLunch) {
+          // Ensure lunch is null when excludeLunch is true
+          lunch = null;
         }
 
         if (!Array.isArray(snacks)) {
           snacks = [];
+        }
+
+        // Calculate totalCalories from all meals if not provided
+        let totalCalories = anyEntry.totalCalories;
+        if (!totalCalories || totalCalories === 0) {
+          totalCalories = 0;
+          if (breakfast?.calories) totalCalories += breakfast.calories;
+          if (lunch?.calories) totalCalories += lunch.calories;
+          if (dinner?.calories) totalCalories += dinner.calories;
+          if (Array.isArray(snacks)) {
+            snacks.forEach((snack: any) => {
+              if (snack?.calories) totalCalories += snack.calories;
+            });
+          }
         }
 
         return {
@@ -479,7 +510,7 @@ JSON OUTPUT FORMAT (MANDATORY):
           lunch,
           dinner,
           snacks,
-          totalCalories: anyEntry.totalCalories ?? 0,
+          totalCalories,
           summary: anyEntry.summary ?? ''
         } as DailyPlan;
       };

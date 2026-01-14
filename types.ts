@@ -154,6 +154,7 @@ export interface MealGenParams {
   medications?: string;
   dietaryHistory?: string;
   socialBackground?: string;
+  excludeLunch?: boolean;
 }
 
 export interface MedicalDocument {

@@ -104,6 +104,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         dietaryHistory: selectedClient.dietaryHistory || '',
         socialBackground: selectedClient.socialBackground || '',
         customInstructions: '',
+        excludeLunch: false,
       });
       fetchSavedPlans(selectedClient.id);
       setPlan(null);
@@ -370,8 +371,11 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                 <span>Total: ${day.totalCalories} kcal</span>
               </div>
               <div class="meal-row">
-                ${['Breakfast', 'Lunch', 'Dinner'].map(type => {
-                  const meal = day[type.toLowerCase() as keyof typeof day] as any;
+                ${[
+                  { type: 'Breakfast', meal: day.breakfast },
+                  { type: 'Lunch', meal: day.lunch },
+                  { type: 'Dinner', meal: day.dinner }
+                ].filter(item => item.meal).map(({ type, meal }) => {
                   return `
                     <div class="meal-col">
                       <div class="meal-type">${type}</div>
@@ -459,6 +463,18 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
           <div className="space-y-4">
 
             <EditableField label="Custom Instructions (for this plan only)" value={params.customInstructions || ''} onChange={v => handleParamChange('customInstructions', v)} type="textarea" />
+            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <input 
+                type="checkbox" 
+                id="excludeLunch"
+                checked={params.excludeLunch || false}
+                onChange={e => handleParamChange('excludeLunch', e.target.checked)}
+                className="w-4 h-4 text-[#8C3A36] border-slate-300 rounded focus:ring-[#8C3A36] cursor-pointer"
+              />
+              <label htmlFor="excludeLunch" className="text-sm text-slate-700 cursor-pointer font-medium">
+                Exclude lunch from meal plan
+              </label>
+            </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Reference Image (Optional)</label>
               <div className="relative border border-dashed border-slate-300 rounded-lg p-3 text-center hover:bg-slate-50">
