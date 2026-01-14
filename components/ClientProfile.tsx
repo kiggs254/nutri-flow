@@ -7,7 +7,7 @@ import {
   Share2, Copy, MessageSquare, Dumbbell, Droplet, RefreshCw, AlertTriangle,
   HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp, Bell
 } from 'lucide-react';
-import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
+import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings, Reminder } from '../types';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords } from '../services/geminiService';
 import { useToast } from '../utils/toast';
@@ -141,8 +141,18 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   
   // Reminder state
   const [showReminderModal, setShowReminderModal] = useState(false);
-  const [reminderForm, setReminderForm] = useState({ title: '', message: '' });
+  const [reminderForm, setReminderForm] = useState({ 
+    title: '', 
+    message: '',
+    isAutomated: false,
+    frequency: 'daily' as 'daily' | 'weekly' | 'custom',
+    scheduleTime: '09:00',
+    scheduleDays: [] as number[],
+    intervalHours: 2
+  });
   const [savingReminder, setSavingReminder] = useState(false);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [showRemindersList, setShowRemindersList] = useState(false);
   
   // Records Tab State
   const [recordsInfo, setRecordsInfo] = useState({
@@ -196,7 +206,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       
-      const [plansRes, apptsRes, foodsRes, invRes, msgRes, docsRes, settingsRes] = await Promise.all([
+      const [plansRes, apptsRes, foodsRes, invRes, msgRes, docsRes, settingsRes, remindersRes] = await Promise.all([
           supabase.from('meal_plans').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
           supabase.from('appointments').select('*').eq('client_id', client.id).order('date', { ascending: true }),
           supabase.from('food_logs').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
@@ -204,6 +214,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           supabase.from('messages').select('*').eq('client_id', client.id).order('created_at', { ascending: true }),
           supabase.from('medical_documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
           supabase.from('billing_settings').select('*').eq('user_id', user.id).single(),
+          supabase.rpc('get_client_reminders', { p_client_id: client.id }),
       ]);
       if (plansRes.data) setMealPlans(plansRes.data.map(p => ({
         id: p.id, clientId: p.client_id, createdAt: p.created_at, planData: p.plan_data, label: p.day_label || 'Weekly Plan'
@@ -235,6 +246,26 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       })));
       if (settingsRes.data) {
         setBillingSettings(settingsRes.data);
+      }
+      if (remindersRes.data) {
+        const formattedReminders: Reminder[] = (remindersRes.data as any[]).map((rem: any) => ({
+          id: rem.id,
+          clientId: rem.client_id,
+          title: rem.title,
+          message: rem.message,
+          createdAt: rem.created_at,
+          isDismissed: rem.is_dismissed || false,
+          dismissedAt: rem.dismissed_at || undefined,
+          isAutomated: rem.is_automated || false,
+          frequency: rem.frequency,
+          scheduleTime: rem.schedule_time,
+          scheduleDays: rem.schedule_days,
+          intervalHours: rem.interval_hours,
+          nextScheduledAt: rem.next_scheduled_at,
+          parentReminderId: rem.parent_reminder_id,
+          isActive: rem.is_active !== false
+        }));
+        setReminders(formattedReminders);
       }
 
 
@@ -392,17 +423,64 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     setSavingReminder(true);
     
     try {
-      const { error } = await supabase.from('reminders').insert({
+      const reminderData: any = {
         client_id: client.id,
         title: reminderForm.title.trim(),
-        message: reminderForm.message.trim()
-      });
+        message: reminderForm.message.trim(),
+        is_automated: reminderForm.isAutomated
+      };
+
+      if (reminderForm.isAutomated) {
+        reminderData.frequency = reminderForm.frequency;
+        reminderData.schedule_time = reminderForm.scheduleTime;
+        reminderData.is_active = true;
+        
+        if (reminderForm.frequency === 'weekly') {
+          reminderData.schedule_days = reminderForm.scheduleDays;
+        } else if (reminderForm.frequency === 'custom') {
+          reminderData.interval_hours = reminderForm.intervalHours;
+        }
+        
+        // Calculate next scheduled time
+        const now = new Date();
+        const [hours, minutes] = reminderForm.scheduleTime.split(':').map(Number);
+        let nextScheduled = new Date();
+        nextScheduled.setHours(hours, minutes, 0, 0);
+        
+        if (nextScheduled <= now) {
+          if (reminderForm.frequency === 'daily') {
+            nextScheduled.setDate(nextScheduled.getDate() + 1);
+          } else if (reminderForm.frequency === 'custom') {
+            nextScheduled.setHours(nextScheduled.getHours() + reminderForm.intervalHours);
+          } else if (reminderForm.frequency === 'weekly') {
+            // Find next scheduled day
+            const today = now.getDay();
+            const sortedDays = [...reminderForm.scheduleDays].sort((a, b) => a - b);
+            const nextDay = sortedDays.find(d => d > today) || sortedDays[0];
+            const daysToAdd = nextDay > today ? nextDay - today : (7 - today + nextDay);
+            nextScheduled.setDate(nextScheduled.getDate() + daysToAdd);
+          }
+        }
+        
+        reminderData.next_scheduled_at = nextScheduled.toISOString();
+      }
+      
+      const { error } = await supabase.from('reminders').insert(reminderData);
       
       if (error) throw error;
       
       setShowReminderModal(false);
-      setReminderForm({ title: '', message: '' });
-      showToast('Reminder sent successfully!', 'success');
+      setReminderForm({ 
+        title: '', 
+        message: '',
+        isAutomated: false,
+        frequency: 'daily',
+        scheduleTime: '09:00',
+        scheduleDays: [],
+        intervalHours: 2
+      });
+      fetchData(); // Refresh reminders
+      showToast(reminderForm.isAutomated ? 'Automated reminder created successfully!' : 'Reminder sent successfully!', 'success');
     } catch (err: any) {
       showToast('Failed to send reminder: ' + err.message, 'error');
     } finally {
@@ -1033,19 +1111,42 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       case 'messages':
         return (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)] w-full overflow-x-hidden">
-              <div className="p-3 sm:p-4 border-b flex justify-between items-center">
+              <div className="p-3 sm:p-4 border-b flex justify-between items-center gap-2">
                 <h3 className="text-base sm:text-lg font-bold text-slate-800">Messages</h3>
-                <button 
-                  onClick={() => {
-                    setReminderForm({ title: '', message: '' });
-                    setShowReminderModal(true);
-                  }}
-                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#8FAA41] text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7d9537] transition-colors"
-                >
-                  <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Send Reminder</span>
-                  <span className="sm:hidden">Reminder</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowRemindersList(true)}
+                    className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-100 text-slate-700 rounded-lg text-xs sm:text-sm font-medium hover:bg-slate-200 transition-colors"
+                  >
+                    <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">View Reminders</span>
+                    <span className="sm:hidden">Reminders</span>
+                    {reminders.filter(r => !r.isDismissed).length > 0 && (
+                      <span className="bg-[#8FAA41] text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
+                        {reminders.filter(r => !r.isDismissed).length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReminderForm({ 
+                        title: '', 
+                        message: '',
+                        isAutomated: false,
+                        frequency: 'daily',
+                        scheduleTime: '09:00',
+                        scheduleDays: [],
+                        intervalHours: 2
+                      });
+                      setShowReminderModal(true);
+                    }}
+                    className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#8FAA41] text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7d9537] transition-colors"
+                  >
+                    <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Send Reminder</span>
+                    <span className="sm:hidden">Reminder</span>
+                  </button>
+                </div>
               </div>
               <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto overflow-x-hidden flex flex-col">
                   {messages.map(msg => (
@@ -1789,6 +1890,52 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
     </div>
 
+    {showRemindersList && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+          <div className="bg-[#8FAA41] p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+            <h3 className="font-bold text-base sm:text-lg">Reminders for {client.name}</h3>
+            <button type="button" onClick={() => setShowRemindersList(false)} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+          </div>
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+            {reminders.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No reminders sent yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {reminders.map(reminder => (
+                  <div key={reminder.id} className={`p-3 sm:p-4 rounded-lg border ${reminder.isDismissed ? 'bg-slate-50 border-slate-200' : 'bg-[#F9F5F5] border-[#8FAA41]/30'}`}>
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-bold text-slate-800 text-sm sm:text-base">{reminder.title}</h4>
+                          {reminder.isAutomated && (
+                            <span className="px-2 py-0.5 bg-[#8FAA41]/20 text-[#8FAA41] text-[10px] sm:text-xs font-bold rounded-full">Automated</span>
+                          )}
+                          {reminder.isDismissed && (
+                            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] sm:text-xs font-bold rounded-full">✓ Dismissed</span>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-600 mb-2">{reminder.message}</p>
+                        <div className="flex flex-wrap gap-2 text-[10px] sm:text-xs text-slate-500">
+                          <span>Sent: {new Date(reminder.createdAt).toLocaleString()}</span>
+                          {reminder.isDismissed && reminder.dismissedAt && (
+                            <span>Dismissed: {new Date(reminder.dismissedAt).toLocaleString()}</span>
+                          )}
+                          {reminder.isAutomated && reminder.frequency && (
+                            <span>Frequency: {reminder.frequency}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
     {showReminderModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
         <form onSubmit={handleSendReminder} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
@@ -1804,7 +1951,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                 required
                 value={reminderForm.title} 
                 onChange={e => setReminderForm({...reminderForm, title: e.target.value})} 
-                placeholder="e.g., Check-in reminder, Meal plan update..."
+                placeholder="e.g., Drink water, Log meal plan..."
                 className="w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg mt-1 focus:ring-[#8FAA41] focus:border-[#8FAA41]"
               />
             </div>
@@ -1815,9 +1962,86 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                 value={reminderForm.message} 
                 onChange={e => setReminderForm({...reminderForm, message: e.target.value})} 
                 placeholder="Enter your reminder message..."
-                className="w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg mt-1 h-32 sm:h-40 resize-none focus:ring-[#8FAA41] focus:border-[#8FAA41]"
+                className="w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg mt-1 h-24 sm:h-32 resize-none focus:ring-[#8FAA41] focus:border-[#8FAA41]"
               />
             </div>
+            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border">
+              <input 
+                type="checkbox" 
+                id="isAutomated"
+                checked={reminderForm.isAutomated}
+                onChange={e => setReminderForm({...reminderForm, isAutomated: e.target.checked})}
+                className="w-4 h-4 text-[#8FAA41] border-slate-300 rounded focus:ring-[#8FAA41]"
+              />
+              <label htmlFor="isAutomated" className="text-sm font-medium text-slate-700 cursor-pointer">
+                Set as automated recurring reminder
+              </label>
+            </div>
+            {reminderForm.isAutomated && (
+              <div className="space-y-3 p-3 bg-slate-50 rounded-lg border animate-in fade-in duration-200">
+                <div>
+                  <label className="text-xs font-bold uppercase text-slate-600 mb-1 block">Frequency</label>
+                  <select 
+                    value={reminderForm.frequency}
+                    onChange={e => setReminderForm({...reminderForm, frequency: e.target.value as any})}
+                    className="w-full p-2 text-sm border border-slate-300 rounded-lg"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="custom">Custom Interval</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase text-slate-600 mb-1 block">Time</label>
+                  <input 
+                    type="time" 
+                    value={reminderForm.scheduleTime}
+                    onChange={e => setReminderForm({...reminderForm, scheduleTime: e.target.value})}
+                    className="w-full p-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+                {reminderForm.frequency === 'weekly' && (
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-600 mb-1 block">Days of Week</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            const days = reminderForm.scheduleDays || [];
+                            const newDays = days.includes(idx) 
+                              ? days.filter(d => d !== idx)
+                              : [...days, idx].sort();
+                            setReminderForm({...reminderForm, scheduleDays: newDays});
+                          }}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            reminderForm.scheduleDays?.includes(idx)
+                              ? 'bg-[#8FAA41] text-white'
+                              : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {reminderForm.frequency === 'custom' && (
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-600 mb-1 block">Interval (hours)</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={reminderForm.intervalHours}
+                      onChange={e => setReminderForm({...reminderForm, intervalHours: parseInt(e.target.value) || 2})}
+                      className="w-full p-2 text-sm border border-slate-300 rounded-lg"
+                      placeholder="e.g., 2 for every 2 hours"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end gap-2 sticky bottom-0">
             <button 
@@ -1829,10 +2053,10 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
             </button>
             <button 
               type="submit" 
-              disabled={savingReminder || !reminderForm.title.trim() || !reminderForm.message.trim()} 
+              disabled={savingReminder || !reminderForm.title.trim() || !reminderForm.message.trim() || (reminderForm.isAutomated && reminderForm.frequency === 'weekly' && (!reminderForm.scheduleDays || reminderForm.scheduleDays.length === 0))} 
               className="px-4 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base bg-[#8FAA41] text-white hover:bg-[#7d9537] disabled:opacity-50 flex items-center gap-2"
             >
-              {savingReminder ? <><Loader2 className="w-4 h-4 animate-spin"/> Sending...</> : 'Send Reminder'}
+              {savingReminder ? <><Loader2 className="w-4 h-4 animate-spin"/> Sending...</> : reminderForm.isAutomated ? 'Create Automated Reminder' : 'Send Reminder'}
             </button>
           </div>
         </form>

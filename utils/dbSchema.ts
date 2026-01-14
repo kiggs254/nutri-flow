@@ -63,9 +63,11 @@ CREATE TABLE IF NOT EXISTS public.meal_plans ( id uuid not null default uuid_gen
 CREATE TABLE IF NOT EXISTS public.messages ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, sender text not null check (sender in ('client', 'nutritionist')), content text not null, is_read boolean default false );
 CREATE TABLE IF NOT EXISTS public.medical_documents ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, file_name text not null, file_path text not null unique );
 CREATE TABLE IF NOT EXISTS public.billing_settings ( id uuid default uuid_generate_v4() primary key, user_id uuid references auth.users(id) on delete cascade not null unique, currency text default 'USD' not null, paystack_public_key text, created_at timestamp with time zone default timezone('utc'::text, now()) not null );
-CREATE TABLE IF NOT EXISTS public.reminders ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, title text not null, message text not null, is_dismissed boolean default false not null, dismissed_at timestamp with time zone );
+CREATE TABLE IF NOT EXISTS public.reminders ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, title text not null, message text not null, is_dismissed boolean default false not null, dismissed_at timestamp with time zone, is_automated boolean default false not null, frequency text, schedule_time time, schedule_days integer[], interval_hours integer, next_scheduled_at timestamp with time zone, parent_reminder_id uuid references public.reminders(id) on delete cascade, is_active boolean default true not null );
 CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON public.reminders(client_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_dismissed ON public.reminders(client_id, is_dismissed);
+CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON public.reminders(next_scheduled_at) WHERE is_automated = true AND is_active = true AND is_dismissed = false;
+CREATE INDEX IF NOT EXISTS idx_reminders_automated ON public.reminders(client_id, is_automated, is_active) WHERE is_automated = true;
 
 -- 2. RLS Policies for Nutritionists (Authenticated Users)
 -- Helper function to check ownership securely.
@@ -161,6 +163,8 @@ GRANT EXECUTE ON FUNCTION insert_portal_food_log(uuid, text, text, text) TO anon
 GRANT EXECUTE ON FUNCTION update_invoice_after_payment(uuid, uuid, text, text) TO anon;
 GRANT EXECUTE ON FUNCTION get_portal_reminders(uuid) TO anon;
 GRANT EXECUTE ON FUNCTION dismiss_portal_reminder(uuid, uuid) TO anon;
+CREATE OR REPLACE FUNCTION get_client_reminders(p_client_id uuid) RETURNS SETOF reminders AS $$ SELECT * FROM public.reminders WHERE client_id = p_client_id ORDER BY created_at DESC; $$ LANGUAGE sql SECURITY DEFINER;
+GRANT EXECUTE ON FUNCTION get_client_reminders(uuid) TO authenticated;
 
 
 -- 4. Storage RLS Policies

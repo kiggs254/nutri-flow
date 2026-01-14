@@ -141,6 +141,14 @@ export interface Reminder {
   createdAt: string;
   isDismissed: boolean;
   dismissedAt?: string;
+  isAutomated?: boolean;
+  frequency?: 'daily' | 'weekly' | 'custom';
+  scheduleTime?: string; // Time of day (HH:mm format)
+  scheduleDays?: number[]; // Days of week (0=Sunday, 6=Saturday)
+  intervalHours?: number; // For custom intervals
+  nextScheduledAt?: string;
+  parentReminderId?: string;
+  isActive?: boolean;
 }
 
 export interface MealGenParams {

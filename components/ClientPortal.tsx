@@ -248,6 +248,16 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       }
     };
     fetchData();
+    
+    // Generate recurring reminders when portal loads
+    const generateReminders = async () => {
+      try {
+        await supabase.rpc('generate_recurring_reminders');
+      } catch (err) {
+        console.warn('Failed to generate recurring reminders:', err);
+      }
+    };
+    generateReminders();
   }, [portalToken]);
 
   useEffect(() => {
