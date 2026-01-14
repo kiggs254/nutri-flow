@@ -4,6 +4,8 @@ import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail,
 import { Client } from '../types';
 import { supabase } from '../services/supabase';
 import { SETUP_SQL } from '../utils/dbSchema';
+import { useToast } from '../utils/toast';
+import { ConfirmModal } from '../utils/confirmModal';
 
 interface ClientListProps {
   clients: Client[];
@@ -15,7 +17,10 @@ interface ClientListProps {
 }
 
 const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, compact = false, onSelectClient, selectedClientId }) => {
+  const { showToast } = useToast();
   const [isTableMissing, setIsTableMissing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
   
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -96,7 +101,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
-      alert(err.message);
+      showToast(err.message, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -104,15 +109,22 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
 
   const handleDeleteClient = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this client?')) return;
-    
+    setClientToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteClient = async () => {
+    if (!clientToDelete) return;
     try {
-      const { error } = await supabase.from('clients').delete().eq('id', id);
+      const { error } = await supabase.from('clients').delete().eq('id', clientToDelete);
       if (error) throw error;
+      showToast('Client deleted successfully', 'success');
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
-      alert('Error deleting client');
+      showToast('Error deleting client', 'error');
     }
+    setShowDeleteConfirm(false);
+    setClientToDelete(null);
   };
 
 
@@ -525,6 +537,23 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         </div>
       )}
     </div>
+  );
+};
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Client"
+        message="Are you sure you want to delete this client? This action cannot be undone."
+        onConfirm={confirmDeleteClient}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setClientToDelete(null);
+        }}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
+    </>
   );
 };
 

@@ -6,6 +6,7 @@ import Auth from './components/Auth';
 import { ClientPortal } from './components/ClientPortal';
 import { supabase } from './services/supabase';
 import { Loader2 } from 'lucide-react';
+import { ToastProvider } from './utils/toast';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -91,7 +92,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <>
+    <ToastProvider>
       {session ? (
         <Dashboard onLogout={handleLogout} />
       ) : (
@@ -99,7 +100,7 @@ const App: React.FC = () => {
       )}
       
       <Auth isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
-    </>
+    </ToastProvider>
   );
 };
 

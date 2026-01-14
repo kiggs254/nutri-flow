@@ -4,6 +4,8 @@ import { generateMealPlan } from '../services/geminiService';
 import { DailyPlan, MealGenParams, Client, SavedMealPlan, Meal } from '../types';
 import { supabase } from '../services/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Pie, Cell, Legend } from 'recharts';
+import { useToast } from '../utils/toast';
+import { ConfirmModal } from '../utils/confirmModal';
 
 interface MealPlannerProps {
   selectedClient: Client | null;
@@ -69,6 +71,7 @@ const InfoField: React.FC<{ label: string; value?: string; }> = ({ label, value 
 
 // -- Main Component --
 export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
+  const { showToast } = useToast();
   const [params, setParams] = useState<MealGenParams | null>(null);
   const [plan, setPlan] = useState<DailyPlan[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,6 +90,8 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     avgFats: number;
     macroDistribution: { name: string, value: number, fill: string }[];
   } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [planToDelete, setPlanToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedClient) {
@@ -216,11 +221,11 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     try {
       const { error } = await supabase.from('meal_plans').insert({ client_id: selectedClient.id, plan_data: plan, day_label: planLabel });
       if (error) throw error;
-      alert('Plan saved!');
+      showToast('Plan saved!', 'success');
       fetchSavedPlans(selectedClient.id);
       setIsEditing(false);
     } catch (e: any) {
-      alert('Error saving plan: ' + e.message);
+      showToast('Error saving plan: ' + e.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -248,11 +253,21 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   };
   
   const handleDeleteSavedPlan = async (planId: string) => {
-    if (window.confirm("Are you sure you want to delete this plan?")) {
-        const { error } = await supabase.from('meal_plans').delete().eq('id', planId);
-        if (error) { alert("Error deleting plan: " + error.message); } 
-        else { setSavedPlans(savedPlans.filter(p => p.id !== planId)); }
+    setPlanToDelete(planId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeletePlan = async () => {
+    if (!planToDelete) return;
+    const { error } = await supabase.from('meal_plans').delete().eq('id', planToDelete);
+    if (error) {
+      showToast("Error deleting plan: " + error.message, 'error');
+    } else {
+      setSavedPlans(savedPlans.filter(p => p.id !== planToDelete));
+      showToast('Plan deleted successfully', 'success');
     }
+    setShowDeleteConfirm(false);
+    setPlanToDelete(null);
   };
 
   const generateShoppingList = () => {
@@ -601,7 +616,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                 onClick={() => {
                   const text = generateShoppingList().join('\n');
                   navigator.clipboard.writeText(text);
-                  alert('Copied to clipboard!');
+                  showToast('Copied to clipboard!', 'success', 2000);
                 }}
                 className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-slate-700"
                >
@@ -611,6 +626,20 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Meal Plan"
+        message="Are you sure you want to delete this plan? This action cannot be undone."
+        onConfirm={confirmDeletePlan}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setPlanToDelete(null);
+        }}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };
