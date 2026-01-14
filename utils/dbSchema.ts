@@ -63,6 +63,9 @@ CREATE TABLE IF NOT EXISTS public.meal_plans ( id uuid not null default uuid_gen
 CREATE TABLE IF NOT EXISTS public.messages ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, sender text not null check (sender in ('client', 'nutritionist')), content text not null, is_read boolean default false );
 CREATE TABLE IF NOT EXISTS public.medical_documents ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, file_name text not null, file_path text not null unique );
 CREATE TABLE IF NOT EXISTS public.billing_settings ( id uuid default uuid_generate_v4() primary key, user_id uuid references auth.users(id) on delete cascade not null unique, currency text default 'USD' not null, paystack_public_key text, created_at timestamp with time zone default timezone('utc'::text, now()) not null );
+CREATE TABLE IF NOT EXISTS public.reminders ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, title text not null, message text not null, is_dismissed boolean default false not null, dismissed_at timestamp with time zone );
+CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON public.reminders(client_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_dismissed ON public.reminders(client_id, is_dismissed);
 
 -- 2. RLS Policies for Nutritionists (Authenticated Users)
 -- Helper function to check ownership securely.
@@ -88,6 +91,7 @@ ALTER TABLE public.meal_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.medical_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
 
 -- CRITICAL SECURITY FIX: Force RLS for table owners as well.
 ALTER TABLE public.clients FORCE ROW LEVEL SECURITY;
@@ -99,6 +103,7 @@ ALTER TABLE public.meal_plans FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.messages FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.medical_documents FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.reminders FORCE ROW LEVEL SECURITY;
 
 -- Drop ALL existing policies to ensure idempotency
 DROP POLICY IF EXISTS "Nutritionists can manage their own clients" ON public.clients;
@@ -110,6 +115,7 @@ DROP POLICY IF EXISTS "Nutritionists can manage client meal_plans" ON public.mea
 DROP POLICY IF EXISTS "Nutritionists can manage client messages" ON public.messages;
 DROP POLICY IF EXISTS "Nutritionists can manage client medical_documents" ON public.medical_documents;
 DROP POLICY IF EXISTS "Nutritionists can manage their own billing settings" ON public.billing_settings;
+DROP POLICY IF EXISTS "Nutritionists can manage client reminders" ON public.reminders;
 
 -- Create new, strict policies for authenticated users
 CREATE POLICY "Nutritionists can manage their own clients" ON public.clients FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -121,6 +127,7 @@ CREATE POLICY "Nutritionists can manage client meal_plans" ON public.meal_plans 
 CREATE POLICY "Nutritionists can manage client messages" ON public.messages FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 CREATE POLICY "Nutritionists can manage client medical_documents" ON public.medical_documents FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 CREATE POLICY "Nutritionists can manage their own billing settings" ON public.billing_settings FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Nutritionists can manage client reminders" ON public.reminders FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 
 
 -- 3. Secure RPC Functions for Client Portal (Anonymous Access)
@@ -137,6 +144,8 @@ CREATE OR REPLACE FUNCTION get_paystack_key_for_client(p_portal_token uuid) RETU
 CREATE OR REPLACE FUNCTION insert_portal_message(p_portal_token uuid, p_content text) RETURNS SETOF messages AS $$ DECLARE v_client_id uuid; BEGIN v_client_id := get_client_id_by_token(p_portal_token); IF v_client_id IS NULL THEN RAISE EXCEPTION 'Invalid token'; END IF; RETURN QUERY INSERT INTO public.messages (client_id, sender, content) VALUES (v_client_id, 'client', p_content) RETURNING *; END; $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION insert_portal_food_log(p_portal_token uuid, p_ai_analysis text, p_image_url text, p_notes text) RETURNS SETOF food_logs AS $$ DECLARE v_client_id uuid; BEGIN v_client_id := get_client_id_by_token(p_portal_token); IF v_client_id IS NULL THEN RAISE EXCEPTION 'Invalid token'; END IF; RETURN QUERY INSERT INTO public.food_logs (client_id, ai_analysis, image_url, notes) VALUES (v_client_id, p_ai_analysis, p_image_url, p_notes) RETURNING *; END; $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION update_invoice_after_payment(p_portal_token uuid, p_invoice_id uuid, p_payment_method text, p_transaction_ref text) RETURNS SETOF invoices AS $$ DECLARE v_client_id uuid; BEGIN v_client_id := get_client_id_by_token(p_portal_token); IF v_client_id IS NULL THEN RAISE EXCEPTION 'Invalid token'; END IF; RETURN QUERY UPDATE public.invoices SET status = 'Paid', payment_method = p_payment_method, transaction_ref = p_transaction_ref WHERE id = p_invoice_id AND client_id = v_client_id RETURNING *; END; $$ LANGUAGE plpgsql SECURITY DEFINER;
+CREATE OR REPLACE FUNCTION get_portal_reminders(p_portal_token uuid) RETURNS SETOF reminders AS $$ SELECT * FROM public.reminders WHERE client_id = get_client_id_by_token(p_portal_token) AND is_dismissed = false ORDER BY created_at DESC; $$ LANGUAGE sql SECURITY DEFINER;
+CREATE OR REPLACE FUNCTION dismiss_portal_reminder(p_portal_token uuid, p_reminder_id uuid) RETURNS SETOF reminders AS $$ DECLARE v_client_id uuid; BEGIN v_client_id := get_client_id_by_token(p_portal_token); IF v_client_id IS NULL THEN RAISE EXCEPTION 'Invalid token'; END IF; RETURN QUERY UPDATE public.reminders SET is_dismissed = true, dismissed_at = timezone('utc'::text, now()) WHERE id = p_reminder_id AND client_id = v_client_id AND is_dismissed = false RETURNING *; END; $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant anonymous access to only these specific functions
 GRANT EXECUTE ON FUNCTION get_portal_client_data(uuid) TO anon;
@@ -150,6 +159,8 @@ GRANT EXECUTE ON FUNCTION get_paystack_key_for_client(uuid) TO anon;
 GRANT EXECUTE ON FUNCTION insert_portal_message(uuid, text) TO anon;
 GRANT EXECUTE ON FUNCTION insert_portal_food_log(uuid, text, text, text) TO anon;
 GRANT EXECUTE ON FUNCTION update_invoice_after_payment(uuid, uuid, text, text) TO anon;
+GRANT EXECUTE ON FUNCTION get_portal_reminders(uuid) TO anon;
+GRANT EXECUTE ON FUNCTION dismiss_portal_reminder(uuid, uuid) TO anon;
 
 
 -- 4. Storage RLS Policies

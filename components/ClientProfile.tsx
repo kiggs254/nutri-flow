@@ -5,7 +5,7 @@ import {
   Camera, Brain, User, Plus, Trash2, Send, CheckCircle,
   ChevronLeft, ChevronRight, X, Mail, Loader2, Edit2, MapPin, DollarSign,
   Share2, Copy, MessageSquare, Dumbbell, Droplet, RefreshCw, AlertTriangle,
-  HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp
+  HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp, Bell
 } from 'lucide-react';
 import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
 import { supabase } from '../services/supabase';
@@ -138,6 +138,11 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Reminder state
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [reminderForm, setReminderForm] = useState({ title: '', message: '' });
+  const [savingReminder, setSavingReminder] = useState(false);
   
   // Records Tab State
   const [recordsInfo, setRecordsInfo] = useState({
@@ -280,9 +285,23 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         }
       )
       .subscribe();
+
+    // Subscribe to reminder updates to show when client dismisses them
+    const remindersChannel = supabase.channel(`reminders-${client.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'reminders', filter: `client_id=eq.${client.id}` },
+        (payload) => {
+          const updatedReminder = payload.new;
+          if (updatedReminder.is_dismissed) {
+            showToast(`Reminder "${updatedReminder.title}" was dismissed by ${client.name}`, 'success');
+          }
+        }
+      )
+      .subscribe();
     
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(remindersChannel);
     };
   }, [client.id]);
 
@@ -364,6 +383,30 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         return filtered;
       });
       setNewMessage(content);
+    }
+  };
+
+  const handleSendReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reminderForm.title.trim() || !reminderForm.message.trim()) return;
+    setSavingReminder(true);
+    
+    try {
+      const { error } = await supabase.from('reminders').insert({
+        client_id: client.id,
+        title: reminderForm.title.trim(),
+        message: reminderForm.message.trim()
+      });
+      
+      if (error) throw error;
+      
+      setShowReminderModal(false);
+      setReminderForm({ title: '', message: '' });
+      showToast('Reminder sent successfully!', 'success');
+    } catch (err: any) {
+      showToast('Failed to send reminder: ' + err.message, 'error');
+    } finally {
+      setSavingReminder(false);
     }
   };
 
@@ -990,6 +1033,20 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       case 'messages':
         return (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)] w-full overflow-x-hidden">
+              <div className="p-3 sm:p-4 border-b flex justify-between items-center">
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Messages</h3>
+                <button 
+                  onClick={() => {
+                    setReminderForm({ title: '', message: '' });
+                    setShowReminderModal(true);
+                  }}
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-[#8FAA41] text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7d9537] transition-colors"
+                >
+                  <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Send Reminder</span>
+                  <span className="sm:hidden">Reminder</span>
+                </button>
+              </div>
               <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto overflow-x-hidden flex flex-col">
                   {messages.map(msg => (
                       <div key={msg.id} className={`flex flex-col max-w-[75%] sm:max-w-sm md:max-w-md ${msg.sender === 'nutritionist' ? 'self-end items-end' : 'self-start items-start'}`}>
@@ -1731,6 +1788,56 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       )}
 
     </div>
+
+    {showReminderModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+        <form onSubmit={handleSendReminder} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+          <div className="bg-[#8FAA41] p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+            <h3 className="font-bold text-base sm:text-lg">Send Reminder to {client.name}</h3>
+            <button type="button" onClick={() => setShowReminderModal(false)} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+          </div>
+          <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+            <div>
+              <label className="text-xs font-bold uppercase text-slate-600">Title</label>
+              <input 
+                type="text" 
+                required
+                value={reminderForm.title} 
+                onChange={e => setReminderForm({...reminderForm, title: e.target.value})} 
+                placeholder="e.g., Check-in reminder, Meal plan update..."
+                className="w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg mt-1 focus:ring-[#8FAA41] focus:border-[#8FAA41]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase text-slate-600">Message</label>
+              <textarea 
+                required
+                value={reminderForm.message} 
+                onChange={e => setReminderForm({...reminderForm, message: e.target.value})} 
+                placeholder="Enter your reminder message..."
+                className="w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg mt-1 h-32 sm:h-40 resize-none focus:ring-[#8FAA41] focus:border-[#8FAA41]"
+              />
+            </div>
+          </div>
+          <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end gap-2 sticky bottom-0">
+            <button 
+              type="button" 
+              onClick={() => setShowReminderModal(false)} 
+              className="px-4 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base border border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              disabled={savingReminder || !reminderForm.title.trim() || !reminderForm.message.trim()} 
+              className="px-4 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base bg-[#8FAA41] text-white hover:bg-[#7d9537] disabled:opacity-50 flex items-center gap-2"
+            >
+              {savingReminder ? <><Loader2 className="w-4 h-4 animate-spin"/> Sending...</> : 'Send Reminder'}
+            </button>
+          </div>
+        </form>
+      </div>
+    )}
 
     <ConfirmModal
       isOpen={showDeleteConfirm !== null}

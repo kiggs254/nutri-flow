@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights } from '../services/geminiService';
-import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification } from '../types';
+import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification, Reminder } from '../types';
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -57,6 +57,8 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [dismissingReminder, setDismissingReminder] = useState<string | null>(null);
   
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -168,13 +170,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           setPaystackKey(keyData);
         }
         
-        const [planRes, progressRes, invoiceRes, foodLogRes, apptRes, msgRes] = await Promise.all([
+        const [planRes, progressRes, invoiceRes, foodLogRes, apptRes, msgRes, remindersRes] = await Promise.all([
           supabase.rpc('get_portal_meal_plans', { p_portal_token: portalToken }),
           supabase.rpc('get_portal_progress_logs', { p_portal_token: portalToken }),
           supabase.rpc('get_portal_invoices', { p_portal_token: portalToken }),
           supabase.rpc('get_portal_food_logs', { p_portal_token: portalToken }),
           supabase.rpc('get_portal_appointments', { p_portal_token: portalToken }),
           supabase.rpc('get_portal_messages', { p_portal_token: portalToken }),
+          supabase.rpc('get_portal_reminders', { p_portal_token: portalToken }),
         ]);
         
         if (planRes.data?.[0]) {
@@ -224,6 +227,18 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           // Sort by date ascending (oldest first, newest at bottom)
           formattedMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
           setMessages(formattedMessages);
+        }
+        if(remindersRes.data) {
+          const formattedReminders: Reminder[] = (remindersRes.data as any[]).map((rem: any) => ({
+            id: rem.id,
+            clientId: rem.client_id,
+            title: rem.title,
+            message: rem.message,
+            createdAt: rem.created_at || new Date().toISOString(),
+            isDismissed: rem.is_dismissed || false,
+            dismissedAt: rem.dismissed_at || undefined
+          }));
+          setReminders(formattedReminders);
         }
 
       } catch (err: any) {
@@ -325,11 +340,41 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           setUnreadCount(prev => prev + 1);
         }
       ).subscribe();
+
+    const remindersChannel = supabase.channel(`client-portal-reminders-${clientId}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'reminders', filter: `client_id=eq.${clientId}` },
+        (payload) => {
+          const rawReminder = payload.new;
+          const newReminder: Reminder = {
+            id: rawReminder.id,
+            clientId: rawReminder.client_id,
+            title: rawReminder.title,
+            message: rawReminder.message,
+            createdAt: rawReminder.created_at || new Date().toISOString(),
+            isDismissed: rawReminder.is_dismissed || false,
+            dismissedAt: rawReminder.dismissed_at || undefined
+          };
+          setReminders(prev => [newReminder, ...prev]);
+          setUnreadCount(prev => prev + 1);
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'reminders', filter: `client_id=eq.${clientId}` },
+        (payload) => {
+          const updatedReminder = payload.new;
+          if (updatedReminder.is_dismissed) {
+            setReminders(prev => prev.filter(r => r.id !== updatedReminder.id));
+          }
+        }
+      )
+      .subscribe();
     
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(invoicesChannel);
       supabase.removeChannel(mealPlansChannel);
+      supabase.removeChannel(remindersChannel);
     };
   }, [client?.id]);
 
@@ -349,6 +394,26 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
             setActiveTab('overview');
     }
   }
+
+  const handleDismissReminder = async (reminderId: string) => {
+    setDismissingReminder(reminderId);
+    try {
+      const { data, error } = await supabase.rpc('dismiss_portal_reminder', {
+        p_portal_token: portalToken,
+        p_reminder_id: reminderId
+      }).then(res => ({ data: res.data?.[0], error: res.error }));
+      
+      if (error) throw error;
+      
+      // Remove from local state
+      setReminders(prev => prev.filter(r => r.id !== reminderId));
+      showToast('Reminder dismissed', 'success');
+    } catch (err: any) {
+      showToast('Failed to dismiss reminder: ' + err.message, 'error');
+    } finally {
+      setDismissingReminder(null);
+    }
+  };
 
   const handleGenerateInsight = async () => {
     if (!client) return;
@@ -866,6 +931,40 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       default:
         return (
           <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+            {/* Reminders Section */}
+            {reminders.length > 0 && (
+              <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2">
+                  <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-[#8FAA41]" />
+                  Reminders from Your Nutritionist
+                </h2>
+                <div className="space-y-3">
+                  {reminders.map(reminder => (
+                    <div key={reminder.id} className="bg-[#F9F5F5] border border-[#8FAA41]/20 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-slate-800 text-sm sm:text-base mb-1">{reminder.title}</h3>
+                        <p className="text-xs sm:text-sm text-slate-600">{reminder.message}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">
+                          {new Date(reminder.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDismissReminder(reminder.id)}
+                        disabled={dismissingReminder === reminder.id}
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#8FAA41] text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7d9537] disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 flex-shrink-0"
+                      >
+                        {dismissingReminder === reminder.id ? (
+                          <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> Dismissing...</>
+                        ) : (
+                          <>✓ Dismiss</>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
               <ShortcutCard icon={<Utensils className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Meal Plan" onClick={() => setActiveTab('meal_plan')} />
               <ShortcutCard icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Food Diary" onClick={() => setActiveTab('food_diary')} />

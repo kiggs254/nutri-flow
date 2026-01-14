@@ -133,6 +133,16 @@ export interface Notification {
   type: 'message' | 'invoice' | 'meal_plan';
 }
 
+export interface Reminder {
+  id: string;
+  clientId: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  isDismissed: boolean;
+  dismissedAt?: string;
+}
+
 export interface MealGenParams {
   age: number;
   gender: string;
