@@ -3,12 +3,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingDown, TrendingUp, Activity, Plus, Calendar, Scale, CheckCircle, Droplet, Dumbbell } from 'lucide-react';
 import { Client, ProgressLog } from '../types';
 import { supabase } from '../services/supabase';
+import { useToast } from '../utils/toast';
 
 interface ProgressTrackerProps {
   selectedClient: Client | null;
 }
 
 const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => {
+  const { showToast } = useToast();
   const [logs, setLogs] = useState<ProgressLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -107,7 +109,7 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
       setNewLog({ date: new Date().toISOString().split('T')[0], weight: '', complianceScore: 80, notes: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '' });
       fetchLogs();
     } catch (e: any) {
-      alert("Error adding log: " + e.message);
+      showToast("Error adding log: " + e.message, 'error');
     }
   };
 

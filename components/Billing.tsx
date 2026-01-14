@@ -4,6 +4,7 @@ import { supabase } from '../services/supabase';
 import { BillingSettings, Invoice, Client } from '../types';
 import { DollarSign, Save, Loader2, Settings, TrendingUp, AlertCircle, Database, RefreshCw, Send, X, CheckCircle } from 'lucide-react';
 import { SETUP_SQL } from '../utils/dbSchema';
+import { useToast } from '../utils/toast';
 
 interface InvoiceWithClient extends Invoice {
   clients: Client | null;
@@ -21,6 +22,7 @@ const getCurrencySymbol = (currencyCode?: string): string => {
 };
 
 const Billing: React.FC<{onClientClick: (client: Client) => void}> = ({onClientClick}) => {
+  const { showToast } = useToast();
   const [settings, setSettings] = useState<Partial<BillingSettings>>({ currency: 'USD' });
   const [invoices, setInvoices] = useState<InvoiceWithClient[]>([]);
   const [stats, setStats] = useState({ total: 0, pending: 0 });
@@ -119,9 +121,9 @@ const Billing: React.FC<{onClientClick: (client: Client) => void}> = ({onClientC
       }, { onConflict: 'user_id' });
 
       if (error) throw error;
-      alert("Settings saved successfully!");
+      showToast("Settings saved successfully!", 'success');
     } catch(err: any) {
-      alert("Error saving settings: " + err.message);
+      showToast("Error saving settings: " + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -147,7 +149,7 @@ const Billing: React.FC<{onClientClick: (client: Client) => void}> = ({onClientC
       await fetchData();
       setShowActionModal(false);
     } catch(err: any) {
-      alert("Failed to update invoice status: " + err.message);
+      showToast("Failed to update invoice status: " + err.message, 'error');
     }
   };
 

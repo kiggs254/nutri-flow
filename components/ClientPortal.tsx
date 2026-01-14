@@ -5,6 +5,7 @@ import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, 
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useToast } from '../utils/toast';
 
 declare global {
   interface Window {
@@ -29,6 +30,7 @@ const getCurrencySymbol = (currencyCode?: string): string => {
 
 // FIX: Changed from default export to named export.
 export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<Client | null>(null);
@@ -402,11 +404,11 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
   
   const handlePaystackPayment = () => {
     if (!client || !selectedInvoice || !paystackKey) {
-      alert("Payments for this practice are not configured correctly. Please contact your nutritionist.");
+      showToast("Payments for this practice are not configured correctly. Please contact your nutritionist.", 'error');
       return;
     }
     if (!window.PaystackPop) {
-      alert("Payment gateway could not be loaded. Please check your internet connection and try again.");
+      showToast("Payment gateway could not be loaded. Please check your internet connection and try again.", 'error');
       return;
     }
 
@@ -429,9 +431,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           )
         );
         setShowPaymentModal(false);
-        alert('Payment successful!');
+        showToast('Payment successful!', 'success');
       } catch (e: any) {
-        alert('Payment verification failed. Please contact support with your transaction reference: ' + response.reference);
+        showToast('Payment verification failed. Please contact support with your transaction reference: ' + response.reference, 'error');
       }
     };
 
@@ -458,9 +460,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       // For now, we simulate by just updating the status.
       // const { error } = await supabase.rpc('trigger_mpesa_payment', { ... });
       setShowPaymentModal(false);
-      alert('A payment prompt has been sent to your phone. This is a demo.');
+      showToast('A payment prompt has been sent to your phone. This is a demo.', 'info');
     } catch(e) {
-      alert('Failed to initiate M-Pesa payment.');
+      showToast('Failed to initiate M-Pesa payment.', 'error');
     } finally {
       setProcessingPayment(false);
     }

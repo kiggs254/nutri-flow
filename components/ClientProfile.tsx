@@ -10,6 +10,8 @@ import {
 import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords } from '../services/geminiService';
+import { useToast } from '../utils/toast';
+import { ConfirmModal } from '../utils/confirmModal';
 import ReactMarkdown from 'react-markdown';
 
 interface ClientProfileProps {
@@ -87,8 +89,10 @@ const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => voi
 
 
 const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateClient, initialTab }) => {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records'>(initialTab || 'overview');
   const [loading, setLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{type: string, id: string, name?: string} | null>(null);
   
   const [mealPlans, setMealPlans] = useState<SavedMealPlan[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -337,7 +341,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         fetchData();
         setShowInvoiceActionModal(false);
     } catch (err: any) {
-        alert("Failed to update invoice: " + err.message);
+        showToast("Failed to update invoice: " + err.message, 'error');
     }
   };
 
@@ -379,7 +383,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       setShowInvoiceModal(false);
       fetchData(); // Refresh invoices
     } catch (err: any) {
-      alert("Error creating invoice: " + err.message);
+      showToast("Error creating invoice: " + err.message, 'error');
     } finally {
       setSavingInvoice(false);
     }
@@ -409,23 +413,30 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       setSelectedAppt(null);
       fetchData(); // Refresh appointments
     } catch (err: any) {
-      alert("Error saving appointment: " + err.message);
+      showToast("Error saving appointment: " + err.message, 'error');
     } finally {
       setSavingAppt(false);
     }
   };
 
   const handleDeleteAppointment = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this appointment?')) return;
+    const appt = appointments.find(a => a.id === id);
+    setShowDeleteConfirm({ type: 'appointment', id, name: appt?.type || 'appointment' });
+  };
+
+  const confirmDeleteAppointment = async () => {
+    if (!showDeleteConfirm || showDeleteConfirm.type !== 'appointment') return;
     try {
-      const { error } = await supabase.from('appointments').delete().eq('id', id);
+      const { error } = await supabase.from('appointments').delete().eq('id', showDeleteConfirm.id);
       if (error) throw error;
       setShowApptModal(false);
       setSelectedAppt(null);
       fetchData();
+      showToast('Appointment deleted successfully', 'success');
     } catch (e: any) {
-      alert("Error deleting appointment: " + e.message);
+      showToast("Error deleting appointment: " + e.message, 'error');
     }
+    setShowDeleteConfirm(null);
   };
 
   const handleOpenApptModal = (dateStr: string, appt: Appointment | null = null) => {
@@ -496,13 +507,14 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   };
 
   const handleDeleteMealPlan = async (planId: string) => {
-    if (!confirm('Are you sure you want to delete this meal plan? This action cannot be undone.')) return;
+    setShowDeleteConfirm({ type: 'meal_plan', id: planId });
+    return;
     try {
       const { error } = await supabase.from('meal_plans').delete().eq('id', planId);
       if (error) throw error;
       fetchData(); // Refresh the list of meal plans
     } catch (e: any) {
-      alert("Error deleting meal plan: " + e.message);
+      showToast("Error deleting meal plan: " + e.message, 'error');
     }
   };
   
@@ -533,9 +545,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         socialBackground: data.social_background,
       };
       onUpdateClient(updatedClient);
-      alert('Records updated!');
+      showToast('Records updated!', 'success');
     } catch (e: any) {
-      alert('Error saving records: ' + e.message);
+      showToast('Error saving records: ' + e.message, 'error');
     } finally {
       setIsSavingMedicalInfo(false);
     }
@@ -569,7 +581,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       } else if (isPDF) {
         // For PDFs, we'll need to extract text
         // For now, show a message that PDF text extraction requires additional setup
-        alert('PDF text extraction is not yet fully supported. Please use images or text files, or manually enter the information.');
+        showToast('PDF text extraction is not yet fully supported. Please use images or text files, or manually enter the information.', 'warning');
         setIsUploading(false);
         setIsAnalyzing(false);
         return;
@@ -583,7 +595,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         });
         mimeType = 'text/plain';
       } else {
-        alert('Unsupported file type. Please use images (JPG, PNG) or text files (TXT).');
+        showToast('Unsupported file type. Please use images (JPG, PNG) or text files (TXT).', 'warning');
         setIsUploading(false);
         setIsAnalyzing(false);
         return;
@@ -611,7 +623,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
       fetchData(); // Refresh documents
     } catch (e: any) {
-      alert('File processing failed: ' + e.message);
+      showToast('File processing failed: ' + e.message, 'error');
       setIsAnalyzing(false);
     } finally {
       setIsUploading(false);
@@ -696,9 +708,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         skeletalMuscleMass: progressLog.skeletalMuscleMass,
         skeletalMusclePercentage: progressLog.skeletalMusclePercentage,
       });
-      alert('Progress logged successfully!');
+      showToast('Progress logged successfully!', 'success');
     } catch (e: any) {
-      alert('Error logging progress: ' + e.message);
+      showToast('Error logging progress: ' + e.message, 'error');
     } finally {
       setSavingProgressLog(false);
     }
@@ -718,12 +730,18 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (e: any) {
-      alert('Download failed: ' + e.message);
+      showToast('Download failed: ' + e.message, 'error');
     }
   };
   
   const handleDeleteFile = async (doc: MedicalDocument) => {
-    if (!confirm(`Are you sure you want to delete ${doc.fileName}?`)) return;
+    setShowDeleteConfirm({ type: 'document', id: doc.id, name: doc.fileName });
+  };
+
+  const confirmDeleteDocument = async () => {
+    if (!showDeleteConfirm || showDeleteConfirm.type !== 'document') return;
+    const doc = medicalDocuments.find(d => d.id === showDeleteConfirm.id);
+    if (!doc) return;
     try {
       const { error: storageError } = await supabase.storage.from('medical_documents').remove([doc.filePath]);
       if (storageError) throw storageError;
@@ -731,14 +749,20 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       const { error: dbError } = await supabase.from('medical_documents').delete().eq('id', doc.id);
       if (dbError) throw dbError;
 
-      fetchData(); // Refresh documents
+      fetchData();
+      showToast('Document deleted successfully', 'success');
     } catch (e: any) {
-      alert('Delete failed: ' + e.message);
+      showToast('Delete failed: ' + e.message, 'error');
     }
+    setShowDeleteConfirm(null);
   };
   
   const handleRegenerateLink = async () => {
-    if (!confirm('Are you sure you want to regenerate the access link? The old link will stop working immediately.')) return;
+    setShowDeleteConfirm({ type: 'regenerate_link', id: 'regenerate' });
+  };
+
+  const confirmRegenerateLink = async () => {
+    if (!showDeleteConfirm || showDeleteConfirm.type !== 'regenerate_link') return;
     setRegenerating(true);
     try {
       const newAccessToken = crypto.randomUUID();
@@ -753,12 +777,13 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
       if (data) {
         onUpdateClient({ ...client, portalAccessToken: data.portal_access_token });
-        alert('Client portal link has been regenerated.');
+        showToast('Client portal link has been regenerated.', 'success');
       }
     } catch (err: any) {
-      alert('Failed to regenerate link: ' + err.message);
+      showToast('Failed to regenerate link: ' + err.message, 'error');
     } finally {
       setRegenerating(false);
+      setShowDeleteConfirm(null);
     }
   };
 
@@ -1646,6 +1671,33 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       )}
 
     </div>
+
+    <ConfirmModal
+      isOpen={showDeleteConfirm !== null}
+      title={
+        showDeleteConfirm?.type === 'appointment' ? 'Delete Appointment' :
+        showDeleteConfirm?.type === 'meal_plan' ? 'Delete Meal Plan' :
+        showDeleteConfirm?.type === 'document' ? 'Delete Document' :
+        'Regenerate Portal Link'
+      }
+      message={
+        showDeleteConfirm?.type === 'appointment' ? `Are you sure you want to delete this appointment?` :
+        showDeleteConfirm?.type === 'meal_plan' ? 'Are you sure you want to delete this meal plan? This action cannot be undone.' :
+        showDeleteConfirm?.type === 'document' ? `Are you sure you want to delete ${showDeleteConfirm.name}?` :
+        'Are you sure you want to regenerate the access link? The old link will stop working immediately.'
+      }
+      onConfirm={() => {
+        if (showDeleteConfirm?.type === 'appointment') confirmDeleteAppointment();
+        else if (showDeleteConfirm?.type === 'meal_plan') confirmDeleteMealPlan();
+        else if (showDeleteConfirm?.type === 'document') confirmDeleteDocument();
+        else if (showDeleteConfirm?.type === 'regenerate_link') confirmRegenerateLink();
+      }}
+      onCancel={() => setShowDeleteConfirm(null)}
+      confirmText={showDeleteConfirm?.type === 'regenerate_link' ? 'Regenerate' : 'Delete'}
+      cancelText="Cancel"
+      variant={showDeleteConfirm?.type === 'regenerate_link' ? 'warning' : 'danger'}
+    />
+  </div>
   );
 };
 

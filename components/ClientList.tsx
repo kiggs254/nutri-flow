@@ -536,9 +536,6 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
@@ -553,7 +550,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         cancelText="Cancel"
         variant="danger"
       />
-    </>
+    </div>
   );
 };
 
