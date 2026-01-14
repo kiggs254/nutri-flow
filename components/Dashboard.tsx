@@ -380,14 +380,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               </div>
             )}
           </div>
-          <div className="hidden md:block">
-            {selectedClient && (
-              <div className="flex items-center gap-2 bg-[#F9F5F5] text-[#8C3A36] px-3 py-1 rounded-full text-sm border border-stone-200">
-                <span className="w-2 h-2 rounded-full bg-[#8FAA41]"></span>
-                Working with: <strong>{selectedClient.name}</strong>
-              </div>
-            )}
-          </div>
           <div className="relative">
             <button 
               onClick={() => {
