@@ -1186,6 +1186,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
 
   return (
+    <>
     <div className="animate-in fade-in duration-300 w-full overflow-x-hidden">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
@@ -1697,7 +1698,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       cancelText="Cancel"
       variant={showDeleteConfirm?.type === 'regenerate_link' ? 'warning' : 'danger'}
     />
-  </div>
+    </>
   );
 };
 
