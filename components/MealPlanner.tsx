@@ -109,7 +109,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         dietaryHistory: selectedClient.dietaryHistory || '',
         socialBackground: selectedClient.socialBackground || '',
         customInstructions: '',
-        excludeLunch: false,
+        excludeMeal: null,
       });
       fetchSavedPlans(selectedClient.id);
       setPlan(null);
@@ -478,17 +478,23 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
           <div className="space-y-4">
 
             <EditableField label="Custom Instructions (for this plan only)" value={params.customInstructions || ''} onChange={v => handleParamChange('customInstructions', v)} type="textarea" />
-            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <input 
-                type="checkbox" 
-                id="excludeLunch"
-                checked={params.excludeLunch || false}
-                onChange={e => handleParamChange('excludeLunch', e.target.checked)}
-                className="w-4 h-4 text-[#8C3A36] border-slate-300 rounded focus:ring-[#8C3A36] cursor-pointer"
-              />
-              <label htmlFor="excludeLunch" className="text-sm text-slate-700 cursor-pointer font-medium">
-                Exclude lunch from meal plan
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-wider">
+                Exclude a meal (optional)
               </label>
+              <select
+                value={params.excludeMeal || ''}
+                onChange={(e) => handleParamChange('excludeMeal', e.target.value ? e.target.value : null)}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-sm focus:ring-[#8C3A36] focus:border-[#8C3A36]"
+              >
+                <option value="">Do not exclude</option>
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-2">
+                The selected meal will be omitted for every day in the plan.
+              </p>
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Reference Image (Optional)</label>

@@ -154,6 +154,15 @@ export interface MealGenParams {
   medications?: string;
   dietaryHistory?: string;
   socialBackground?: string;
+  /**
+   * Which main meal to exclude from the generated plan.
+   * If set, the model should omit that meal (set it to null) for every day.
+   */
+  excludeMeal?: 'breakfast' | 'lunch' | 'dinner' | null;
+
+  /**
+   * @deprecated Use excludeMeal instead (kept for backwards compatibility).
+   */
   excludeLunch?: boolean;
 }
 
