@@ -129,6 +129,53 @@ const callGemini = async (
   return text;
 };
 
+// Normalise OpenAI / DeepSeek message content into a plain string
+const extractMessageText = (messageContent: any): string => {
+  if (messageContent == null) return '';
+
+  // Newer chat APIs often return an array of content parts
+  if (Array.isArray(messageContent)) {
+    const parts = messageContent
+      .map((part: any) => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        if (typeof part?.content === 'string') return part.content;
+        if (Array.isArray(part?.content)) {
+          return part.content
+            .map((p: any) => (typeof p === 'string' ? p : p.text ?? ''))
+            .join('');
+        }
+        return '';
+      })
+      .filter(Boolean);
+    return parts.join('\n').trim();
+  }
+
+  if (typeof messageContent === 'string') {
+    return messageContent;
+  }
+
+  // Fallback for unexpected structures
+  if (typeof messageContent === 'object') {
+    if (typeof (messageContent as any).text === 'string') {
+      return (messageContent as any).text;
+    }
+    if (Array.isArray((messageContent as any).content)) {
+      return (messageContent as any).content
+        .map((p: any) => (typeof p === 'string' ? p : p.text ?? ''))
+        .join('\n')
+        .trim();
+    }
+    try {
+      return JSON.stringify(messageContent);
+    } catch {
+      return '';
+    }
+  }
+
+  return '';
+};
+
 // Direct OpenAI API Call
 const callOpenAI = async (
   systemPrompt: string,
@@ -183,7 +230,9 @@ const callOpenAI = async (
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  const rawContent = data?.choices?.[0]?.message?.content;
+  const text = extractMessageText(rawContent);
+  return text;
 };
 
 // Direct DeepSeek API Call (OpenAI-compatible)
@@ -239,7 +288,9 @@ const callDeepSeek = async (
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  const rawContent = data?.choices?.[0]?.message?.content;
+  const text = extractMessageText(rawContent);
+  return text;
 };
 
 
