@@ -395,8 +395,11 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
     - Protein in grams (format: "XXg")
     - Carbohydrates in grams (format: "XXg")
     - Fats in grams (format: "XXg")
+    - Ingredients with SPECIFIC QUANTITIES: Each ingredient must include quantity and unit
+      Examples: "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice", "200ml milk", "1 tbsp olive oil"
     
     Calculate these values accurately based on the ingredients and portion sizes. Do not leave any nutritional values empty or as zero unless the meal truly has none.
+    CRITICAL: All ingredients must specify exact quantities (e.g., "20g porridge", not just "porridge").
   `;
 
   // Direct API calls for all providers
