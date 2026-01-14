@@ -4,6 +4,7 @@ import { analyzeFoodImage, generateClientInsights } from '../services/geminiServ
 import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification } from '../types';
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 declare global {
   interface Window {
@@ -570,7 +571,27 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                         <textarea value={foodNote} onChange={(e) => setFoodNote(e.target.value)} placeholder="Or describe your meal here..." className="w-full p-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36]/20 focus:border-[#8C3A36] outline-none resize-none h-20 sm:h-24 transition-all" />
                     </div>
                     <button onClick={handleFoodAnalysis} disabled={(!foodImage && !foodNote.trim()) || analyzingFood} className="w-full py-2.5 sm:py-3 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base hover:bg-[#7a2f2b]">{analyzingFood ? <><Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> Analyzing...</> : "Analyze & Log Meal"}</button>
-                    {analysisResult && <div className="p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 animate-in fade-in duration-300"><h4 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Analysis Result:</h4><p className="text-xs sm:text-sm text-slate-700 whitespace-pre-wrap">{analysisResult}</p></div>}
+                    {analysisResult && (
+                      <div className="p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 animate-in fade-in duration-300">
+                        <h4 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Analysis Result:</h4>
+                        <div className="text-xs sm:text-sm text-slate-700 prose prose-sm max-w-none">
+                          <ReactMarkdown
+                            components={{
+                              p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                              strong: ({node, ...props}) => <strong className="font-bold text-slate-900" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                              li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                              h1: ({node, ...props}) => <h1 className="text-base font-bold mb-2 mt-3 first:mt-0" {...props} />,
+                              h2: ({node, ...props}) => <h2 className="text-sm font-bold mb-2 mt-3 first:mt-0" {...props} />,
+                              h3: ({node, ...props}) => <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0" {...props} />,
+                            }}
+                          >
+                            {analysisResult}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
                 </div>
                 <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
                     <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 mb-3 sm:mb-4">Your Diary</h2>
@@ -589,7 +610,34 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                                         </div>
                                         {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-500 flex-shrink-0 ml-2" /> : <ChevronDown className="w-5 h-5 text-slate-500 flex-shrink-0 ml-2" />}
                                     </button>
-                                    {isExpanded && <div className="p-4 border-t border-slate-200 animate-in fade-in duration-200">{log.imageUrl && <img src={log.imageUrl} alt="Food log" className="w-full h-auto max-h-64 object-contain rounded-lg mb-4 bg-slate-100"/>}{log.notes && <div className="mb-4"><h5 className="text-xs font-bold text-slate-400 uppercase mb-1">Your Note</h5><p className="text-sm text-slate-600 bg-white p-3 rounded-md border">{log.notes}</p></div>}<h5 className="text-xs font-bold text-slate-400 uppercase mb-1">AI Analysis</h5><p className="text-sm text-slate-600 whitespace-pre-wrap">{log.aiAnalysis}</p></div>}
+                                    {isExpanded && (
+                                      <div className="p-4 border-t border-slate-200 animate-in fade-in duration-200">
+                                        {log.imageUrl && <img src={log.imageUrl} alt="Food log" className="w-full h-auto max-h-64 object-contain rounded-lg mb-4 bg-slate-100"/>}
+                                        {log.notes && (
+                                          <div className="mb-4">
+                                            <h5 className="text-xs font-bold text-slate-400 uppercase mb-1">Your Note</h5>
+                                            <p className="text-sm text-slate-600 bg-white p-3 rounded-md border">{log.notes}</p>
+                                          </div>
+                                        )}
+                                        <h5 className="text-xs font-bold text-slate-400 uppercase mb-1">AI Analysis</h5>
+                                        <div className="text-sm text-slate-600 prose prose-sm max-w-none">
+                                          <ReactMarkdown
+                                            components={{
+                                              p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                                              strong: ({node, ...props}) => <strong className="font-bold text-slate-900" {...props} />,
+                                              ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                                              ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                                              li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                                              h1: ({node, ...props}) => <h1 className="text-base font-bold mb-2 mt-3 first:mt-0" {...props} />,
+                                              h2: ({node, ...props}) => <h2 className="text-sm font-bold mb-2 mt-3 first:mt-0" {...props} />,
+                                              h3: ({node, ...props}) => <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0" {...props} />,
+                                            }}
+                                          >
+                                            {log.aiAnalysis || 'No analysis available.'}
+                                          </ReactMarkdown>
+                                        </div>
+                                      </div>
+                                    )}
                                 </div>
                             );
                         }) : <p className="text-slate-500 text-center py-8">No meals logged.</p>}
