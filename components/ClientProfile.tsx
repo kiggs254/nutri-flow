@@ -10,6 +10,7 @@ import {
 import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords } from '../services/geminiService';
+import ReactMarkdown from 'react-markdown';
 
 interface ClientProfileProps {
   client: Client;
@@ -891,7 +892,19 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                             {log.imageUrl && <img src={log.imageUrl} className="w-12 h-12 sm:w-16 sm:h-16 rounded object-cover flex-shrink-0" />}
                             <div className="flex-1 min-w-0">
                                <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">{new Date(log.createdAt).toLocaleString()}</p>
-                               <p className="text-xs sm:text-sm mt-1 break-words">{log.aiAnalysis || log.notes || "No analysis available."}</p>
+                               <div className="text-xs sm:text-sm mt-1 prose prose-sm max-w-none">
+                                 <ReactMarkdown
+                                   components={{
+                                     p: ({node, ...props}) => <p className="mb-1 last:mb-0" {...props} />,
+                                     strong: ({node, ...props}) => <strong className="font-bold text-slate-900" {...props} />,
+                                     ul: ({node, ...props}) => <ul className="list-disc list-inside mb-1 space-y-0.5" {...props} />,
+                                     ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-1 space-y-0.5" {...props} />,
+                                     li: ({node, ...props}) => <li className="ml-1" {...props} />,
+                                   }}
+                                 >
+                                   {log.aiAnalysis || log.notes || "No analysis available."}
+                                 </ReactMarkdown>
+                               </div>
                             </div>
                         </div>
                     )) : <p className="text-center text-slate-400 py-6 sm:py-8 text-sm">No food logs yet.</p>}
