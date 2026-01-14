@@ -311,6 +311,64 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
         </div>
       )}
 
+      {/* Progress Log History */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h3 className="font-semibold text-slate-800 mb-4">Progress History</h3>
+        {logs.length === 0 ? (
+          <p className="text-slate-500 text-sm">No progress logs recorded yet. Use \"Log Progress\" to add the first entry.</p>
+        ) : (
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {logs
+              .slice()
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .map(log => (
+              <div key={log.id} className="border border-slate-200 rounded-lg p-3 sm:p-4 flex flex-col gap-1 bg-slate-50/70">
+                <div className="flex justify-between items-center">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-800">
+                    {new Date(log.date).toLocaleDateString()}
+                  </div>
+                  <div className="text-xs sm:text-sm text-slate-500">
+                    {log.weight?.toFixed(1)} kg
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px] sm:text-xs text-slate-500">
+                  {log.bodyFatPercentage != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-medium">
+                      Body Fat: {log.bodyFatPercentage.toFixed(1)}%
+                    </span>
+                  )}
+                  {log.bodyFatMass != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-medium">
+                      {log.bodyFatMass.toFixed(1)} kg fat
+                    </span>
+                  )}
+                  {log.skeletalMuscleMass != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      Muscle: {log.skeletalMuscleMass.toFixed(1)} kg
+                    </span>
+                  )}
+                  {log.skeletalMusclePercentage != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      {log.skeletalMusclePercentage.toFixed(1)}% muscle
+                    </span>
+                  )}
+                  {log.complianceScore != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">
+                      Compliance: {log.complianceScore}%
+                    </span>
+                  )}
+                </div>
+                {log.notes && (
+                  <div className="text-xs sm:text-sm text-slate-700 mt-1 whitespace-pre-line">
+                    {log.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Add Log Modal */}
       {showAddModal && (
          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
