@@ -87,7 +87,11 @@ const App: React.FC = () => {
   if (portalPath.startsWith('/portal/')) {
     const portalToken = portalPath.substring(8); // length of '/portal/'
     if (portalToken) {
-      return <ClientPortal portalToken={portalToken} />;
+      return (
+        <ToastProvider>
+          <ClientPortal portalToken={portalToken} />
+        </ToastProvider>
+      );
     }
   }
 
