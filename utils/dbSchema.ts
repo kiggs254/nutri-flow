@@ -34,6 +34,26 @@ CREATE TABLE IF NOT EXISTS public.clients (
 -- Performance index
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON public.clients(user_id);
 
+-- Add missing columns to existing clients table (for databases that were created before these fields were added)
+DO $$ 
+BEGIN
+    -- Add dietary_history if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_schema = 'public' 
+                   AND table_name = 'clients' 
+                   AND column_name = 'dietary_history') THEN
+        ALTER TABLE public.clients ADD COLUMN dietary_history text;
+    END IF;
+    
+    -- Add social_background if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_schema = 'public' 
+                   AND table_name = 'clients' 
+                   AND column_name = 'social_background') THEN
+        ALTER TABLE public.clients ADD COLUMN social_background text;
+    END IF;
+END $$;
+
 -- (Create other tables if they don't exist, like invoices, appointments, etc.)
 CREATE TABLE IF NOT EXISTS public.invoices ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, amount numeric not null, currency text default 'USD', status text default 'Pending', due_date timestamp with time zone, items jsonb, payment_method text, transaction_ref text );
 CREATE TABLE IF NOT EXISTS public.appointments ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, date timestamp with time zone not null, type text not null, status text default 'Scheduled', notes text );
