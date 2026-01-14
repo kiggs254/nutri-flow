@@ -16,7 +16,9 @@ const AccountSettings: React.FC = () => {
 
     // AI Provider State
     const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
+    const [geminiKey, setGeminiKey] = useState('');
     const [openAIKey, setOpenAIKey] = useState('');
+    const [deepSeekKey, setDeepSeekKey] = useState('');
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -26,8 +28,12 @@ const AccountSettings: React.FC = () => {
                 setUserEmail(user.email || '');
             }
             setSelectedProvider(getAIProvider());
-            const storedKey = localStorage.getItem('nutriflow_openai_key');
-            if (storedKey) setOpenAIKey(storedKey);
+            const storedGeminiKey = localStorage.getItem('nutriflow_gemini_key');
+            const storedOpenAIKey = localStorage.getItem('nutriflow_openai_key');
+            const storedDeepSeekKey = localStorage.getItem('nutriflow_deepseek_key');
+            if (storedGeminiKey) setGeminiKey(storedGeminiKey);
+            if (storedOpenAIKey) setOpenAIKey(storedOpenAIKey);
+            if (storedDeepSeekKey) setDeepSeekKey(storedDeepSeekKey);
             setLoading(false);
         }
         fetchUser();
@@ -38,10 +44,22 @@ const AccountSettings: React.FC = () => {
         setAIProvider(provider);
     };
 
-    const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleGeminiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        setGeminiKey(newValue);
+        localStorage.setItem('nutriflow_gemini_key', newValue);
+    };
+
+    const handleOpenAIKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newValue = e.target.value;
         setOpenAIKey(newValue);
         localStorage.setItem('nutriflow_openai_key', newValue);
+    };
+
+    const handleDeepSeekKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        setDeepSeekKey(newValue);
+        localStorage.setItem('nutriflow_deepseek_key', newValue);
     };
 
     const handlePasswordUpdate = async (e: React.FormEvent) => {
@@ -137,6 +155,23 @@ const AccountSettings: React.FC = () => {
                     </div>
                 </div>
 
+                {selectedProvider === 'gemini' && (
+                    <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
+                        <label className="block text-xs font-bold text-slate-600 uppercase">Google Gemini API Key</label>
+                        <div className="relative">
+                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input 
+                                type="password" 
+                                value={geminiKey}
+                                onChange={handleGeminiKeyChange}
+                                placeholder="AIza..."
+                                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
+                            />
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
+                    </div>
+                )}
+
                 {selectedProvider === 'openai' && (
                     <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
                         <label className="block text-xs font-bold text-slate-600 uppercase">OpenAI API Key</label>
@@ -145,12 +180,29 @@ const AccountSettings: React.FC = () => {
                             <input 
                                 type="password" 
                                 value={openAIKey}
-                                onChange={handleKeyChange}
+                                onChange={handleOpenAIKeyChange}
                                 placeholder="sk-..."
                                 className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
                             />
                         </div>
-                        <p className="text-[10px] sm:text-xs text-slate-500">Note: API keys are now managed server-side via Supabase Edge Functions for enhanced security.</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
+                    </div>
+                )}
+
+                {selectedProvider === 'deepseek' && (
+                    <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
+                        <label className="block text-xs font-bold text-slate-600 uppercase">DeepSeek API Key</label>
+                        <div className="relative">
+                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input 
+                                type="password" 
+                                value={deepSeekKey}
+                                onChange={handleDeepSeekKeyChange}
+                                placeholder="sk-..."
+                                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
+                            />
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
                     </div>
                 )}
             </div>

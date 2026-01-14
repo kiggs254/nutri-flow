@@ -1,6 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { MealGenParams, DailyPlan } from '../types';
-import { supabase } from './supabase';
 
 // --- Provider Configuration ---
 export type AIProvider = 'gemini' | 'openai' | 'deepseek';
@@ -14,71 +12,62 @@ export const setAIProvider = (provider: AIProvider) => {
   localStorage.setItem(PROVIDER_KEY, provider);
 };
 
-// Helper to safely find environment variables (Safe for Vite/Netlify and Node)
-const getEnvVar = (key: string): string => {
-  // Check for Vite prefix
-  // @ts-ignore
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    // @ts-ignore
-    if (import.meta.env[`VITE_${key}`]) return import.meta.env[`VITE_${key}`];
-    // @ts-ignore
-    if (import.meta.env[key]) return import.meta.env[key];
-  }
-
-  // Check for standard Node/Process env
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env[`REACT_APP_${key}`]) return process.env[`REACT_APP_${key}`];
-    if (process.env[key]) return process.env[key];
-  }
-
-  return '';
+// Helper to get API keys from localStorage
+const getGeminiKey = (): string => {
+  return localStorage.getItem('nutriflow_gemini_key') || '';
 };
 
-// Helper to get OpenAI Key (LocalStorage > Env Var)
 const getOpenAIKey = (): string => {
-    return localStorage.getItem('nutriflow_openai_key') || getEnvVar('OPENAI_API_KEY') || '';
+  return localStorage.getItem('nutriflow_openai_key') || '';
 };
 
-// --- Clients ---
-const geminiApiKey = getEnvVar('API_KEY');
+const getDeepSeekKey = (): string => {
+  return localStorage.getItem('nutriflow_deepseek_key') || '';
+};
 
-// Initialize Gemini with a fallback
-const geminiClient = new GoogleGenAI({ apiKey: geminiApiKey || 'missing-api-key-placeholder' });
+// Helper to get Gemini API key
+const getGeminiApiKey = (): string => {
+  const apiKey = getGeminiKey();
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please add it in Account Settings.");
+  }
+  return apiKey;
+};
 
-// --- Schemas ---
+// --- Schemas (JSON Schema format for Gemini API) ---
 const mealSchema = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    name: { type: Type.STRING },
-    calories: { type: Type.INTEGER },
-    protein: { type: Type.STRING },
-    carbs: { type: Type.STRING },
-    fats: { type: Type.STRING },
-    ingredients: { type: Type.ARRAY, items: { type: Type.STRING } },
-    instructions: { type: Type.STRING }
+    name: { type: "string" },
+    calories: { type: "integer" },
+    protein: { type: "string" },
+    carbs: { type: "string" },
+    fats: { type: "string" },
+    ingredients: { type: "array", items: { type: "string" } },
+    instructions: { type: "string" }
   },
   required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
 };
 
 const dailyPlanSchema = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
-    day: { type: Type.STRING },
+    day: { type: "string" },
     breakfast: mealSchema,
     lunch: mealSchema,
     dinner: mealSchema,
-    snacks: { type: Type.ARRAY, items: mealSchema },
-    totalCalories: { type: Type.INTEGER },
-    summary: { type: Type.STRING }
+    snacks: { type: "array", items: mealSchema },
+    totalCalories: { type: "integer" },
+    summary: { type: "string" }
   },
   required: ["day", "breakfast", "lunch", "dinner", "snacks", "totalCalories", "summary"]
 };
 
 const planResponseSchema = {
-  type: Type.OBJECT,
+  type: "object",
   properties: {
     plan: {
-      type: Type.ARRAY,
+      type: "array",
       items: dailyPlanSchema
     }
   },
@@ -88,101 +77,169 @@ const planResponseSchema = {
 // --- Helpers ---
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Get Supabase URL from the supabase client
-const getSupabaseUrl = (): string => {
-  // @ts-ignore
-  return supabase.supabaseUrl || 'https://superbase.emmerce.io';
-};
+// Direct Gemini API Call (using REST API)
+const callGemini = async (
+  systemInstruction: string,
+  parts: Array<{ text?: string; inlineData?: { data: string; mimeType: string } }>,
+  responseSchema?: any,
+  responseMimeType?: string,
+  temperature: number = 0.7,
+  maxTokens: number = 8192
+): Promise<string> => {
+  const apiKey = getGeminiApiKey();
+  const model = 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-// Call AI Proxy Edge Function
-const callAIProxy = async (params: {
-  provider: AIProvider;
-  model?: string;
-  messages?: Array<{ role: string; content: string | Array<any> }>;
-  systemInstruction?: string;
-  temperature?: number;
-  maxTokens?: number;
-  responseSchema?: any;
-  responseMimeType?: string;
-  images?: Array<{ data: string; mimeType: string }>;
-  parts?: Array<{ text?: string; inlineData?: { data: string; mimeType: string } }>;
-}): Promise<{ text: string; raw?: any }> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    throw new Error('Authentication required. Please log in.');
+  const body: any = {
+    contents: [{ parts }]
+  };
+
+  if (systemInstruction) {
+    body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  const supabaseUrl = getSupabaseUrl();
-  const functionUrl = `${supabaseUrl}/functions/v1/ai-proxy`;
+  const generationConfig: any = {};
+  if (temperature !== undefined) generationConfig.temperature = temperature;
+  if (maxTokens !== undefined) generationConfig.maxOutputTokens = maxTokens;
+  if (responseMimeType) generationConfig.responseMimeType = responseMimeType;
+  if (responseSchema) generationConfig.responseSchema = responseSchema;
 
-  const response = await fetch(functionUrl, {
+  if (Object.keys(generationConfig).length > 0) {
+    body.generationConfig = generationConfig;
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`
-    },
-    body: JSON.stringify(params)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-    throw new Error(error.error?.message || `Edge Function Error: ${response.statusText}`);
+    throw new Error(`Gemini API Error: ${error.error?.message || response.statusText}`);
   }
 
-  const result = await response.json();
-  return result;
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  
+  if (!text) {
+    throw new Error('No response text from Gemini API');
+  }
+
+  return text;
 };
 
-// Legacy OpenAI Call Wrapper (kept for fallback if needed)
+// Direct OpenAI API Call
 const callOpenAI = async (
-  systemPrompt: string, 
-  userPrompt: string, 
-  imageBase64?: string, 
-  mimeType?: string, 
-  jsonMode: boolean = false
-) => {
-    const apiKey = getOpenAIKey();
-    if (!apiKey) throw new Error("OpenAI API Key is missing. Please add it in Account Settings or set VITE_OPENAI_API_KEY.");
+  systemPrompt: string,
+  userPrompt: string,
+  imageBase64?: string,
+  mimeType?: string,
+  jsonMode: boolean = false,
+  model: string = 'gpt-4o',
+  temperature: number = 0.7,
+  maxTokens: number = 4096
+): Promise<string> => {
+  const apiKey = getOpenAIKey();
+  if (!apiKey) {
+    throw new Error("OpenAI API Key is missing. Please add it in Account Settings.");
+  }
 
-    const messages: any[] = [{ role: "system", content: systemPrompt }];
-    
-    if (imageBase64 && mimeType) {
-        messages.push({
-            role: "user",
-            content: [
-                { type: "text", text: userPrompt },
-                { 
-                    type: "image_url", 
-                    image_url: { url: `data:${mimeType};base64,${imageBase64}` } 
-                }
-            ]
-        });
-    } else {
-        messages.push({ role: "user", content: userPrompt });
-    }
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o', // Defaulting to GPT-4o for best results
-            messages,
-            response_format: jsonMode ? { type: "json_object" } : undefined,
-            max_tokens: 4096,
-            temperature: 0.7
-        })
+  const messages: any[] = [{ role: "system", content: systemPrompt }];
+  
+  if (imageBase64 && mimeType) {
+    messages.push({
+      role: "user",
+      content: [
+        { type: "text", text: userPrompt },
+        { 
+          type: "image_url", 
+          image_url: { url: `data:${mimeType};base64,${imageBase64}` } 
+        }
+      ]
     });
+  } else {
+    messages.push({ role: "user", content: userPrompt });
+  }
 
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(`OpenAI Error: ${err.error?.message || response.statusText}`);
-    }
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      response_format: jsonMode ? { type: "json_object" } : undefined,
+      max_tokens: maxTokens,
+      temperature
+    })
+  });
 
-    const data = await response.json();
-    return data.choices[0].message.content;
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`OpenAI Error: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+};
+
+// Direct DeepSeek API Call (OpenAI-compatible)
+const callDeepSeek = async (
+  systemPrompt: string,
+  userPrompt: string,
+  imageBase64?: string,
+  mimeType?: string,
+  jsonMode: boolean = false,
+  temperature: number = 0.7,
+  maxTokens: number = 4096
+): Promise<string> => {
+  const apiKey = getDeepSeekKey();
+  if (!apiKey) {
+    throw new Error("DeepSeek API Key is missing. Please add it in Account Settings.");
+  }
+
+  const messages: any[] = [{ role: "system", content: systemPrompt }];
+  
+  if (imageBase64 && mimeType) {
+    messages.push({
+      role: "user",
+      content: [
+        { type: "text", text: userPrompt },
+        { 
+          type: "image_url", 
+          image_url: { url: `data:${mimeType};base64,${imageBase64}` } 
+        }
+      ]
+    });
+  } else {
+    messages.push({ role: "user", content: userPrompt });
+  }
+
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages,
+      response_format: jsonMode ? { type: "json_object" } : undefined,
+      max_tokens: maxTokens,
+      temperature
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`DeepSeek Error: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
 };
 
 
@@ -225,54 +282,64 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
     Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.
   `;
 
-  // Use Edge Function for all providers
+  // Direct API calls for all providers
   const MAX_RETRIES = 3;
   let lastError;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      let result: { text: string };
+      let resultText: string;
       
       if (provider === 'gemini') {
         // Gemini implementation with schema
         const parts: any[] = [{ text: userPrompt }];
         if (params.referenceData) parts.push(params.referenceData);
 
-        result = await callAIProxy({
-          provider: 'gemini',
-          model: 'gemini-2.5-flash',
+        resultText = await callGemini(
           systemInstruction,
           parts,
-          temperature: 0.7,
-          maxTokens: 8192,
-          responseSchema: planResponseSchema,
-          responseMimeType: 'application/json'
-        });
+          planResponseSchema,
+          'application/json',
+          0.7,
+          8192
+        );
       } else {
         // OpenAI and DeepSeek implementation
         const openAISystemPrompt = systemInstruction + `\nOutput a JSON object with a single key "plan" containing the array of daily plans.`;
         
-        const images: Array<{ data: string; mimeType: string }> = [];
+        let imageBase64: string | undefined;
+        let mimeType: string | undefined;
         if (params.referenceData) {
-          images.push({
-            data: params.referenceData.inlineData.data,
-            mimeType: params.referenceData.inlineData.mimeType
-          });
+          imageBase64 = params.referenceData.inlineData.data;
+          mimeType = params.referenceData.inlineData.mimeType;
         }
 
-        result = await callAIProxy({
-          provider: provider === 'openai' ? 'openai' : 'deepseek',
-          model: provider === 'openai' ? 'gpt-4o' : 'deepseek-chat',
-          systemInstruction: openAISystemPrompt,
-          messages: [{ role: 'user', content: userPrompt }],
-          temperature: 0.7,
-          maxTokens: 4096,
-          images: images.length > 0 ? images : undefined
-        });
+        if (provider === 'openai') {
+          resultText = await callOpenAI(
+            openAISystemPrompt,
+            userPrompt,
+            imageBase64,
+            mimeType,
+            true, // jsonMode
+            'gpt-4o',
+            0.7,
+            4096
+          );
+        } else {
+          resultText = await callDeepSeek(
+            openAISystemPrompt,
+            userPrompt,
+            imageBase64,
+            mimeType,
+            true, // jsonMode
+            0.7,
+            4096
+          );
+        }
       }
 
       // Parse the response
-      const parsed = JSON.parse(result.text || '{}');
+      const parsed = JSON.parse(resultText || '{}');
       if (parsed.plan && Array.isArray(parsed.plan)) {
         return parsed.plan as DailyPlan[];
       }
@@ -325,9 +392,9 @@ export const analyzeFoodImage = async (
     return "Please provide an image or a description of your meal.";
   }
 
-  // Use Edge Function for all providers
+  // Direct API calls for all providers
   try {
-    let result: { text: string };
+    let resultText: string;
     
     if (provider === 'gemini') {
       const parts: any[] = [];
@@ -336,33 +403,40 @@ export const analyzeFoodImage = async (
       }
       parts.push({ text: promptText });
 
-      result = await callAIProxy({
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        systemInstruction: "You are an expert nutritionist.",
+      resultText = await callGemini(
+        "You are an expert nutritionist.",
         parts,
-        temperature: 0.7
-      });
+        undefined,
+        undefined,
+        0.7
+      );
     } else {
-      const images: Array<{ data: string; mimeType: string }> = [];
-      if (base64Image && mimeType) {
-        images.push({ data: base64Image, mimeType });
+      if (provider === 'openai') {
+        resultText = await callOpenAI(
+          "You are an expert nutritionist.",
+          promptText,
+          base64Image || undefined,
+          mimeType || undefined,
+          false,
+          'gpt-4o',
+          0.7
+        );
+      } else {
+        resultText = await callDeepSeek(
+          "You are an expert nutritionist.",
+          promptText,
+          base64Image || undefined,
+          mimeType || undefined,
+          false,
+          0.7
+        );
       }
-
-      result = await callAIProxy({
-        provider: provider === 'openai' ? 'openai' : 'deepseek',
-        model: provider === 'openai' ? 'gpt-4o' : 'deepseek-chat',
-        systemInstruction: "You are an expert nutritionist.",
-        messages: [{ role: 'user', content: promptText }],
-        temperature: 0.7,
-        images: images.length > 0 ? images : undefined
-      });
     }
 
-    return result.text || "Could not analyze meal.";
+    return resultText || "Could not analyze meal.";
   } catch (e: any) {
     console.error("Food analysis failed", e);
-    return "Error analyzing meal. Please try again.";
+    return `Error analyzing meal: ${e.message || "Please try again."}`;
   }
 };
 
@@ -372,31 +446,42 @@ export const generateClientInsights = async (clientName: string, weightHistory: 
           Goal: ${goal}. 
           Provide a 3-sentence professional insight on their progress and a motivational tip.`;
 
-  // Use Edge Function for all providers
+  // Direct API calls for all providers
   try {
-    let result: { text: string };
+    let resultText: string;
     
     if (provider === 'gemini') {
-      result = await callAIProxy({
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        systemInstruction: "You are a professional nutrition coach.",
-        parts: [{ text: prompt }],
-        temperature: 0.7
-      });
+      resultText = await callGemini(
+        "You are a professional nutrition coach.",
+        [{ text: prompt }],
+        undefined,
+        undefined,
+        0.7
+      );
+    } else if (provider === 'openai') {
+      resultText = await callOpenAI(
+        "You are a professional nutrition coach.",
+        prompt,
+        undefined,
+        undefined,
+        false,
+        'gpt-4o',
+        0.7
+      );
     } else {
-      result = await callAIProxy({
-        provider: provider === 'openai' ? 'openai' : 'deepseek',
-        model: provider === 'openai' ? 'gpt-4o' : 'deepseek-chat',
-        systemInstruction: "You are a professional nutrition coach.",
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7
-      });
+      resultText = await callDeepSeek(
+        "You are a professional nutrition coach.",
+        prompt,
+        undefined,
+        undefined,
+        false,
+        0.7
+      );
     }
 
-    return result.text || "No insights available.";
-  } catch (e) {
+    return resultText || "No insights available.";
+  } catch (e: any) {
     console.error("Insights generation failed", e);
-    return "Could not generate insights at this time.";
+    return `Could not generate insights: ${e.message || "Please try again."}`;
   }
 };
