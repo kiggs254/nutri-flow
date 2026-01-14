@@ -153,6 +153,14 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   
   // Progress Logging State
   const [showProgressLogModal, setShowProgressLogModal] = useState(false);
+  const [progressLogBodyFatFormat, setProgressLogBodyFatFormat] = useState<'percentage' | 'kg'>(() => {
+    // Determine format based on existing client data
+    return client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'percentage');
+  });
+  const [progressLogMuscleFormat, setProgressLogMuscleFormat] = useState<'kg' | 'percentage'>(() => {
+    // Determine format based on existing client data
+    return client.skeletalMuscleMass ? 'kg' : (client.skeletalMusclePercentage ? 'percentage' : 'kg');
+  });
   const [progressLog, setProgressLog] = useState({
     date: new Date().toISOString().split('T')[0],
     weight: client.weight?.toString() || '',
@@ -806,7 +814,23 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                     </div>
                     <div className="flex items-center gap-2">
                         <button 
-                            onClick={() => setShowProgressLogModal(true)}
+                            onClick={() => {
+                              // Reset formats based on current client data
+                              setProgressLogBodyFatFormat(client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'percentage'));
+                              setProgressLogMuscleFormat(client.skeletalMuscleMass ? 'kg' : (client.skeletalMusclePercentage ? 'percentage' : 'kg'));
+                              // Reset progress log with current client values
+                              setProgressLog({
+                                date: new Date().toISOString().split('T')[0],
+                                weight: client.weight?.toString() || '',
+                                complianceScore: 80,
+                                notes: '',
+                                bodyFatPercentage: client.bodyFatPercentage?.toString() || '',
+                                bodyFatMass: client.bodyFatMass?.toString() || '',
+                                skeletalMuscleMass: client.skeletalMuscleMass?.toString() || '',
+                                skeletalMusclePercentage: client.skeletalMusclePercentage?.toString() || '',
+                              });
+                              setShowProgressLogModal(true);
+                            }}
                             className="bg-[#8C3A36] text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7a2f2b] flex items-center gap-1.5 sm:gap-2 shadow-sm"
                         >
                             <Plus className="w-3 h-3 sm:w-4 sm:h-4" /> Log Progress
@@ -1479,46 +1503,96 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Body Fat</label>
-                  <div className="flex gap-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">Body Fat</label>
+                    <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProgressLogBodyFatFormat('percentage');
+                          setProgressLog({...progressLog, bodyFatMass: ''});
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${progressLogBodyFatFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProgressLogBodyFatFormat('kg');
+                          setProgressLog({...progressLog, bodyFatPercentage: ''});
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${progressLogBodyFatFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                      >
+                        kg
+                      </button>
+                    </div>
+                  </div>
+                  {progressLogBodyFatFormat === 'percentage' ? (
                     <input 
                       type="number" 
                       step="0.1" 
                       placeholder="%" 
                       className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
                       value={progressLog.bodyFatPercentage} 
-                      onChange={e => setProgressLog({...progressLog, bodyFatPercentage: e.target.value})} 
+                      onChange={e => setProgressLog({...progressLog, bodyFatPercentage: e.target.value, bodyFatMass: ''})} 
                     />
+                  ) : (
                     <input 
                       type="number" 
                       step="0.1" 
                       placeholder="kg" 
                       className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
                       value={progressLog.bodyFatMass} 
-                      onChange={e => setProgressLog({...progressLog, bodyFatMass: e.target.value})} 
+                      onChange={e => setProgressLog({...progressLog, bodyFatMass: e.target.value, bodyFatPercentage: ''})} 
                     />
-                  </div>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Muscle Mass</label>
-                  <div className="flex gap-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">Muscle Mass</label>
+                    <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProgressLogMuscleFormat('kg');
+                          setProgressLog({...progressLog, skeletalMusclePercentage: ''});
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${progressLogMuscleFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                      >
+                        kg
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProgressLogMuscleFormat('percentage');
+                          setProgressLog({...progressLog, skeletalMuscleMass: ''});
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${progressLogMuscleFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                      >
+                        %
+                      </button>
+                    </div>
+                  </div>
+                  {progressLogMuscleFormat === 'kg' ? (
                     <input 
                       type="number" 
                       step="0.1" 
                       placeholder="kg" 
                       className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
                       value={progressLog.skeletalMuscleMass} 
-                      onChange={e => setProgressLog({...progressLog, skeletalMuscleMass: e.target.value})} 
+                      onChange={e => setProgressLog({...progressLog, skeletalMuscleMass: e.target.value, skeletalMusclePercentage: ''})} 
                     />
+                  ) : (
                     <input 
                       type="number" 
                       step="0.1" 
                       placeholder="%" 
                       className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
                       value={progressLog.skeletalMusclePercentage} 
-                      onChange={e => setProgressLog({...progressLog, skeletalMusclePercentage: e.target.value})} 
+                      onChange={e => setProgressLog({...progressLog, skeletalMusclePercentage: e.target.value, skeletalMuscleMass: ''})} 
                     />
-                  </div>
+                  )}
                 </div>
               </div>
               <div>
