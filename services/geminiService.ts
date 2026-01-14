@@ -309,8 +309,8 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
   2. Base meal suggestions on the client's goal and dietary history for preference.
   3. Output must be a valid JSON object matching the requested schema exactly.
   4. Instructions: MAX 10 words.
-  5. Ingredients: MAX 5 items.
-  6. Snacks: Name & ingredients only.
+  5. Ingredients: MAX 5 items, each MUST include specific quantity.
+  6. Snacks: Name & ingredients only (with quantities).
   7. Be concise.
   
   MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
@@ -319,6 +319,12 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
   - carbs: Must be a string with numeric value and "g" unit (e.g., "45g", "60g", "35g")
   - fats: Must be a string with numeric value and "g" unit (e.g., "12g", "15g", "8g")
   
+  INGREDIENTS FORMAT - CRITICAL:
+  - Each ingredient MUST include the specific quantity/weight
+  - Use appropriate units: grams (g), milliliters (ml), pieces (pcs), cups, tablespoons (tbsp), teaspoons (tsp)
+  - Format: "quantity unit ingredient name" (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice", "200ml milk")
+  - Be specific and accurate with quantities to match the nutritional values provided
+  
   Example meal format:
   {
     "name": "Grilled Chicken Salad",
@@ -326,11 +332,24 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
     "protein": "35g",
     "carbs": "25g",
     "fats": "18g",
-    "ingredients": ["chicken breast", "mixed greens", "tomatoes", "olive oil", "lemon"],
+    "ingredients": ["150g chicken breast", "100g mixed greens", "50g cherry tomatoes", "1 tbsp olive oil", "1 lemon wedge"],
     "instructions": "Grill chicken, toss with greens and dressing"
   }
   
-  Every breakfast, lunch, dinner, and snack MUST include accurate calories and macro grammages.`;
+  Another example:
+  {
+    "name": "Oatmeal Porridge",
+    "calories": 280,
+    "protein": "12g",
+    "carbs": "45g",
+    "fats": "6g",
+    "ingredients": ["50g rolled oats", "200ml whole milk", "1 banana", "10g honey", "5g chia seeds"],
+    "instructions": "Cook oats in milk, top with banana and honey"
+  }
+  
+  Every breakfast, lunch, dinner, and snack MUST include:
+  1. Accurate calories and macro grammages
+  2. Specific quantities for ALL ingredients (e.g., "20g porridge", "150g chicken", "2 eggs", "1 cup rice")`;
 
   const userPrompt = `
     Client Profile:
@@ -419,7 +438,8 @@ JSON OUTPUT FORMAT (MANDATORY):
     "dinner": ${excludedMeal === 'dinner' ? 'null' : '{ /* Meal object */ }'},
     "snacks": [ /* array of Meal objects */ ]
   }
-- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".${excludeInstruction}
+- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
+- REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
 `;
         
         let imageBase64: string | undefined;
