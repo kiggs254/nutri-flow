@@ -159,8 +159,10 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   // Progress Logging State
   const [showProgressLogModal, setShowProgressLogModal] = useState(false);
   const [progressLogBodyFatFormat, setProgressLogBodyFatFormat] = useState<'percentage' | 'kg'>(() => {
+    // Default to kg if no existing data
+    if (!client.bodyFatPercentage && !client.bodyFatMass) return 'kg';
     // Determine format based on existing client data
-    return client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'percentage');
+    return client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'kg');
   });
   const [progressLogMuscleFormat, setProgressLogMuscleFormat] = useState<'kg' | 'percentage'>(() => {
     // Determine format based on existing client data
@@ -890,7 +892,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                         <button 
                             onClick={() => {
                               // Reset formats based on current client data
-                              setProgressLogBodyFatFormat(client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'percentage'));
+                              setProgressLogBodyFatFormat(client.bodyFatPercentage ? 'percentage' : (client.bodyFatMass ? 'kg' : 'kg'));
                               setProgressLogMuscleFormat(client.skeletalMuscleMass ? 'kg' : (client.skeletalMusclePercentage ? 'percentage' : 'kg'));
                               // Reset progress log with current client values
                               setProgressLog({

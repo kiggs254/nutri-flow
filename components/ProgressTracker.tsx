@@ -16,7 +16,7 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
   const [showAddModal, setShowAddModal] = useState(false);
   
   // Form State
-  const [newLogBodyFatFormat, setNewLogBodyFatFormat] = useState<'percentage' | 'kg'>('percentage');
+  const [newLogBodyFatFormat, setNewLogBodyFatFormat] = useState<'percentage' | 'kg'>('kg');
   const [newLogMuscleFormat, setNewLogMuscleFormat] = useState<'kg' | 'percentage'>('kg');
   const [newLog, setNewLog] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -47,8 +47,8 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
         skeletalMusclePercentage: lastMusclePercent
       }));
 
-      // Set formats based on available data
-      setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'percentage'));
+      // Set formats based on available data (default to kg)
+      setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'kg'));
       setNewLogMuscleFormat(lastMuscleMass ? 'kg' : (lastMusclePercent ? 'percentage' : 'kg'));
 
     } else {
@@ -162,7 +162,7 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
              const lastMuscleMass = selectedClient.skeletalMuscleMass?.toString() || '';
              const lastMusclePercent = selectedClient.skeletalMusclePercentage?.toString() || '';
 
-             setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'percentage'));
+             setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'kg'));
              setNewLogMuscleFormat(lastMuscleMass ? 'kg' : (lastMusclePercent ? 'percentage' : 'kg'));
 
              setNewLog(prev => ({

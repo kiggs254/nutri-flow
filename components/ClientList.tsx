@@ -25,7 +25,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
-  const [bodyFatFormat, setBodyFatFormat] = useState<'percentage' | 'kg'>('percentage');
+  const [bodyFatFormat, setBodyFatFormat] = useState<'percentage' | 'kg'>('kg');
   const [muscleMassFormat, setMuscleMassFormat] = useState<'kg' | 'percentage'>('kg');
   const [newClient, setNewClient] = useState({
     name: '',
@@ -96,7 +96,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       
       setShowAddModal(false);
       setShowAdvancedFields(false);
-      setBodyFatFormat('percentage');
+      setBodyFatFormat('kg');
       setMuscleMassFormat('kg');
       setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
