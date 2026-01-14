@@ -32,6 +32,7 @@ export interface Client {
   medicalHistory?: string; // e.g., "Diabetes Type 2, Hypertension"
   medications?: string; // e.g., "Metformin 500mg, Lisinopril 10mg"
   dietaryHistory?: string; // e.g., "Tried keto, prefers low-carb. Dislikes spicy food."
+  socialBackground?: string; // e.g., "Works night shifts, lives with family, cultural dietary restrictions"
   habits?: {
     smoker: boolean;
     alcohol: 'None' | 'Occasional' | 'Regular';
@@ -152,6 +153,7 @@ export interface MealGenParams {
   medicalHistory?: string;
   medications?: string;
   dietaryHistory?: string;
+  socialBackground?: string;
 }
 
 export interface MedicalDocument {

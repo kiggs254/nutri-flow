@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS public.clients (
     body_fat_mass numeric,
     skeletal_muscle_percentage numeric,
     portal_access_token uuid UNIQUE DEFAULT uuid_generate_v4() NOT NULL,
-    dietary_history text
+    dietary_history text,
+    social_background text
 );
 -- Performance index
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON public.clients(user_id);

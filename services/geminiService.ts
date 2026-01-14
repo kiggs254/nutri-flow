@@ -256,7 +256,26 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
   4. Instructions: MAX 10 words.
   5. Ingredients: MAX 5 items.
   6. Snacks: Name & ingredients only.
-  7. Be concise.`;
+  7. Be concise.
+  
+  MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
+  - calories: Must be a positive integer (e.g., 350, 450, 520)
+  - protein: Must be a string with numeric value and "g" unit (e.g., "25g", "30g", "18g")
+  - carbs: Must be a string with numeric value and "g" unit (e.g., "45g", "60g", "35g")
+  - fats: Must be a string with numeric value and "g" unit (e.g., "12g", "15g", "8g")
+  
+  Example meal format:
+  {
+    "name": "Grilled Chicken Salad",
+    "calories": 420,
+    "protein": "35g",
+    "carbs": "25g",
+    "fats": "18g",
+    "ingredients": ["chicken breast", "mixed greens", "tomatoes", "olive oil", "lemon"],
+    "instructions": "Grill chicken, toss with greens and dressing"
+  }
+  
+  Every breakfast, lunch, dinner, and snack MUST include accurate calories and macro grammages.`;
 
   const userPrompt = `
     Client Profile:
@@ -274,12 +293,32 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
     - Dietary History & Preferences: ${params.dietaryHistory || 'None provided.'}
     - Other Stated Preferences: ${params.preferences || 'None provided.'}
 
+    Social & Lifestyle Context:
+    - Social Background: ${params.socialBackground || 'None provided.'}
+    (Includes: occupation, work schedule, living situation, family context, cultural background, lifestyle factors)
+
     Nutritionist's Custom Instructions:
     - ${params.customInstructions || 'None.'}
     
     ${params.referenceData ? "An image has been attached as reference material." : ""}
     
     Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.
+    
+    CRITICAL: You MUST consider and factor in ALL provided information including:
+    - Medical history and conditions
+    - Current medications and their potential interactions
+    - All allergies and dietary restrictions
+    - Dietary history and preferences
+    - Social background (work schedule, lifestyle, cultural factors)
+    - Activity level and goals
+    
+    IMPORTANT: For each meal (breakfast, lunch, dinner, and snacks), you MUST provide:
+    - Exact calorie count as an integer
+    - Protein in grams (format: "XXg")
+    - Carbohydrates in grams (format: "XXg")
+    - Fats in grams (format: "XXg")
+    
+    Calculate these values accurately based on the ingredients and portion sizes. Do not leave any nutritional values empty or as zero unless the meal truly has none.
   `;
 
   // Direct API calls for all providers
@@ -437,6 +476,109 @@ export const analyzeFoodImage = async (
   } catch (e: any) {
     console.error("Food analysis failed", e);
     return `Error analyzing meal: ${e.message || "Please try again."}`;
+  }
+};
+
+export interface ExtractedRecords {
+  medicalHistory?: string;
+  allergies?: string;
+  medications?: string;
+  dietaryHistory?: string;
+  socialBackground?: string;
+}
+
+export const analyzeMedicalDocument = async (
+  fileContent: string,
+  mimeType: string,
+  isImage: boolean
+): Promise<ExtractedRecords> => {
+  const provider = getAIProvider();
+  
+  const systemInstruction = `You are a medical records analyst. Extract relevant information from the provided document and return it in a structured JSON format.`;
+  
+  const prompt = `Analyze this ${isImage ? 'image' : 'document'} and extract the following information if present:
+  
+  1. Medical History: Any past or current medical conditions, diagnoses, surgeries, or health issues.
+  2. Allergies: Any food allergies, medication allergies, or other allergic reactions mentioned.
+  3. Medications: Current medications, dosages, and frequency.
+  4. Dietary History: Previous diets tried, food preferences, dietary restrictions, eating patterns.
+  5. Social Background: Occupation, work schedule, living situation, family context, cultural background, lifestyle factors that may affect nutrition.
+  
+  Return ONLY a valid JSON object with these exact keys (use empty strings if information is not found):
+  {
+    "medicalHistory": "...",
+    "allergies": "...",
+    "medications": "...",
+    "dietaryHistory": "...",
+    "socialBackground": "..."
+  }`;
+
+  try {
+    let resultText: string;
+    
+    if (provider === 'gemini') {
+      const parts: any[] = [];
+      if (isImage && mimeType) {
+        parts.push({ inlineData: { data: fileContent, mimeType } });
+      } else {
+        parts.push({ text: fileContent });
+      }
+      parts.push({ text: prompt });
+
+      resultText = await callGemini(
+        systemInstruction,
+        parts,
+        {
+          type: "object",
+          properties: {
+            medicalHistory: { type: "string" },
+            allergies: { type: "string" },
+            medications: { type: "string" },
+            dietaryHistory: { type: "string" },
+            socialBackground: { type: "string" }
+          },
+          required: []
+        },
+        'application/json',
+        0.7
+      );
+    } else {
+      // For text documents, include content in the prompt
+      const fullPrompt = isImage ? prompt : `Document content:\n${fileContent}\n\n${prompt}`;
+      
+      if (provider === 'openai') {
+        resultText = await callOpenAI(
+          systemInstruction,
+          fullPrompt,
+          isImage ? fileContent : undefined,
+          isImage ? mimeType : undefined,
+          true, // jsonMode
+          'gpt-4o',
+          0.7
+        );
+      } else {
+        resultText = await callDeepSeek(
+          systemInstruction,
+          fullPrompt,
+          isImage ? fileContent : undefined,
+          isImage ? mimeType : undefined,
+          true, // jsonMode
+          0.7
+        );
+      }
+    }
+
+    const parsed = JSON.parse(resultText || '{}');
+    return {
+      medicalHistory: parsed.medicalHistory || '',
+      allergies: parsed.allergies || '',
+      medications: parsed.medications || '',
+      dietaryHistory: parsed.dietaryHistory || '',
+      socialBackground: parsed.socialBackground || '',
+    };
+  } catch (e: any) {
+    console.error("Document analysis failed", e);
+    throw new Error(`Failed to analyze document: ${e.message || "Please try again."}`);
   }
 };
 

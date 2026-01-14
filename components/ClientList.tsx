@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail, X } from 'lucide-react';
+import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { Client } from '../types';
 import { supabase } from '../services/supabase';
 import { SETUP_SQL } from '../utils/dbSchema';
@@ -19,6 +19,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
   
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   const [newClient, setNewClient] = useState({
     name: '',
     email: '',
@@ -31,6 +32,11 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     bodyFatMass: '',
     skeletalMuscleMass: '',
     skeletalMusclePercentage: '',
+    medicalHistory: '',
+    allergies: '',
+    medications: '',
+    dietaryHistory: '',
+    socialBackground: '',
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -72,12 +78,18 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         body_fat_mass: newClient.bodyFatMass ? parseFloat(newClient.bodyFatMass) : null,
         skeletal_muscle_mass: newClient.skeletalMuscleMass ? parseFloat(newClient.skeletalMuscleMass) : null,
         skeletal_muscle_percentage: newClient.skeletalMusclePercentage ? parseFloat(newClient.skeletalMusclePercentage) : null,
+        medical_history: newClient.medicalHistory || null,
+        allergies: newClient.allergies || null,
+        medications: newClient.medications || null,
+        dietary_history: newClient.dietaryHistory || null,
+        social_background: newClient.socialBackground || null,
       });
 
       if (error) throw error;
       
       setShowAddModal(false);
-      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '' });
+      setShowAdvancedFields(false);
+      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
       alert(err.message);
@@ -363,6 +375,64 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                       onChange={e => setNewClient({...newClient, customGoal: e.target.value})}
                       placeholder="e.g., Improve marathon time"
                     />
+                  </div>
+                )}
+                <button 
+                  type="button"
+                  onClick={() => setShowAdvancedFields(!showAdvancedFields)}
+                  className="w-full py-2 border-2 border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  {showAdvancedFields ? 'Hide' : 'Show'} Advanced Fields
+                  {showAdvancedFields ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {showAdvancedFields && (
+                  <div className="space-y-3 pt-2 border-t border-slate-200">
+                    <h4 className="text-xs font-bold text-slate-600 uppercase">Records Information (Optional)</h4>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Medical History</label>
+                      <textarea 
+                        value={newClient.medicalHistory}
+                        onChange={e => setNewClient({...newClient, medicalHistory: e.target.value})}
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm h-20 resize-none"
+                        placeholder="e.g., Diabetes Type 2, Hypertension..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Allergies</label>
+                      <textarea 
+                        value={newClient.allergies}
+                        onChange={e => setNewClient({...newClient, allergies: e.target.value})}
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm h-16 resize-none"
+                        placeholder="e.g., Peanuts, Shellfish..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Medications</label>
+                      <textarea 
+                        value={newClient.medications}
+                        onChange={e => setNewClient({...newClient, medications: e.target.value})}
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm h-16 resize-none"
+                        placeholder="e.g., Metformin 500mg, Lisinopril 10mg..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Dietary History</label>
+                      <textarea 
+                        value={newClient.dietaryHistory}
+                        onChange={e => setNewClient({...newClient, dietaryHistory: e.target.value})}
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm h-20 resize-none"
+                        placeholder="e.g., Previously tried keto, dislikes cilantro..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Social Background</label>
+                      <textarea 
+                        value={newClient.socialBackground}
+                        onChange={e => setNewClient({...newClient, socialBackground: e.target.value})}
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm h-20 resize-none"
+                        placeholder="e.g., Works night shifts, lives with family, cultural dietary restrictions..."
+                      />
+                    </div>
                   </div>
                 )}
                 <button type="submit" disabled={submitting} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg hover:bg-[#7a2f2b] transition-colors">

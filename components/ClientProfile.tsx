@@ -9,13 +9,13 @@ import {
 } from 'lucide-react';
 import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings } from '../types';
 import { supabase } from '../services/supabase';
-import { analyzeFoodImage, generateClientInsights } from '../services/geminiService';
+import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords } from '../services/geminiService';
 
 interface ClientProfileProps {
   client: Client;
   onBack: () => void;
   onUpdateClient: (updatedClient: Client) => void;
-  initialTab?: 'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'medical';
+  initialTab?: 'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records';
 }
 
 const getCurrencySymbol = (currencyCode?: string): string => {
@@ -86,7 +86,7 @@ const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => voi
 
 
 const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateClient, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'medical'>(initialTab || 'overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records'>(initialTab || 'overview');
   const [loading, setLoading] = useState(false);
   
   const [mealPlans, setMealPlans] = useState<SavedMealPlan[]>([]);
@@ -134,17 +134,21 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Medical Tab State
-  const [medicalInfo, setMedicalInfo] = useState({
+  // Records Tab State
+  const [recordsInfo, setRecordsInfo] = useState({
     medicalHistory: client.medicalHistory || '',
     allergies: client.allergies || '',
     medications: client.medications || '',
     dietaryHistory: client.dietaryHistory || '',
+    socialBackground: client.socialBackground || '',
   });
   const [medicalDocuments, setMedicalDocuments] = useState<MedicalDocument[]>([]);
   const [isSavingMedicalInfo, setIsSavingMedicalInfo] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [showExtractionModal, setShowExtractionModal] = useState(false);
+  const [extractedData, setExtractedData] = useState<ExtractedRecords>({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [billingSettings, setBillingSettings] = useState<Partial<BillingSettings>>({ currency: 'USD' });
 
 
@@ -479,17 +483,18 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     }
   };
   
-  // -- Medical Tab Handlers --
-  const handleSaveMedicalInfo = async () => {
+  // -- Records Tab Handlers --
+  const handleSaveRecordsInfo = async () => {
     setIsSavingMedicalInfo(true);
     try {
       const { data, error } = await supabase
         .from('clients')
         .update({
-          medical_history: medicalInfo.medicalHistory,
-          allergies: medicalInfo.allergies,
-          medications: medicalInfo.medications,
-          dietary_history: medicalInfo.dietaryHistory,
+          medical_history: recordsInfo.medicalHistory,
+          allergies: recordsInfo.allergies,
+          medications: recordsInfo.medications,
+          dietary_history: recordsInfo.dietaryHistory,
+          social_background: recordsInfo.socialBackground,
         })
         .eq('id', client.id)
         .select()
@@ -502,11 +507,12 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         allergies: data.allergies,
         medications: data.medications,
         dietaryHistory: data.dietary_history,
+        socialBackground: data.social_background,
       };
       onUpdateClient(updatedClient);
-      alert('Medical info updated!');
+      alert('Records updated!');
     } catch (e: any) {
-      alert('Error saving medical info: ' + e.message);
+      alert('Error saving records: ' + e.message);
     } finally {
       setIsSavingMedicalInfo(false);
     }
@@ -515,7 +521,58 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   const handleFileUpload = async () => {
     if (!fileToUpload) return;
     setIsUploading(true);
+    setIsAnalyzing(true);
     try {
+      // First, analyze the document
+      const fileType = fileToUpload.type;
+      const isImage = fileType.startsWith('image/');
+      const isPDF = fileType === 'application/pdf';
+      const isText = fileType.startsWith('text/') || fileToUpload.name.endsWith('.txt');
+      
+      let fileContent = '';
+      let mimeType = fileType;
+      
+      if (isImage) {
+        // Convert image to base64
+        const reader = new FileReader();
+        fileContent = await new Promise<string>((resolve, reject) => {
+          reader.onload = (e) => {
+            const result = e.target?.result as string;
+            resolve(result.split(',')[1]); // Remove data:image/...;base64, prefix
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(fileToUpload);
+        });
+      } else if (isPDF) {
+        // For PDFs, we'll need to extract text
+        // For now, show a message that PDF text extraction requires additional setup
+        alert('PDF text extraction is not yet fully supported. Please use images or text files, or manually enter the information.');
+        setIsUploading(false);
+        setIsAnalyzing(false);
+        return;
+      } else if (isText) {
+        // Read text file content
+        fileContent = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsText(fileToUpload);
+        });
+        mimeType = 'text/plain';
+      } else {
+        alert('Unsupported file type. Please use images (JPG, PNG) or text files (TXT).');
+        setIsUploading(false);
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      // Analyze document with AI
+      const extracted = await analyzeMedicalDocument(fileContent, mimeType, isImage);
+      setExtractedData(extracted);
+      setShowExtractionModal(true);
+      setIsAnalyzing(false);
+      
+      // Upload file to storage
       const filePath = `${client.id}/${fileToUpload.name}`;
       const { error: uploadError } = await supabase.storage
         .from('medical_documents')
@@ -529,13 +586,34 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       });
       if (dbError) throw dbError;
 
-      setFileToUpload(null);
       fetchData(); // Refresh documents
     } catch (e: any) {
-      alert('File upload failed: ' + e.message);
+      alert('File processing failed: ' + e.message);
+      setIsAnalyzing(false);
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleAcceptExtraction = () => {
+    // Merge extracted data with current records
+    setRecordsInfo({
+      ...recordsInfo,
+      medicalHistory: extractedData.medicalHistory || recordsInfo.medicalHistory,
+      allergies: extractedData.allergies || recordsInfo.allergies,
+      medications: extractedData.medications || recordsInfo.medications,
+      dietaryHistory: extractedData.dietaryHistory || recordsInfo.dietaryHistory,
+      socialBackground: extractedData.socialBackground || recordsInfo.socialBackground,
+    });
+    setShowExtractionModal(false);
+    setExtractedData({});
+    setFileToUpload(null);
+  };
+
+  const handleRejectExtraction = () => {
+    setShowExtractionModal(false);
+    setExtractedData({});
+    setFileToUpload(null);
   };
 
   const handleDownloadFile = async (filePath: string, fileName: string) => {
@@ -602,7 +680,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     { id: 'meal_plans', label: 'Meal Plans', icon: FileText },
     { id: 'food', label: 'Food Logs', icon: Camera },
     { id: 'messages', label: 'Messages', icon: MessageSquare },
-    { id: 'medical', label: 'Medical', icon: HeartPulse },
+    { id: 'records', label: 'Records', icon: HeartPulse },
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
     { id: 'billing', label: 'Billing', icon: CreditCard },
   ];
@@ -720,33 +798,57 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
               </form>
           </div>
         );
-      case 'medical':
+      case 'records':
         return (
           <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 w-full overflow-x-hidden">
             <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-bold text-slate-800">Medical & Dietary Information</h3>
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Client Records</h3>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Medical History / Conditions</label>
-                <textarea value={medicalInfo.medicalHistory} onChange={e => setMedicalInfo({...medicalInfo, medicalHistory: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none" />
+                <label className="text-xs font-bold text-slate-500 uppercase">Medical History</label>
+                <textarea 
+                  value={recordsInfo.medicalHistory} 
+                  onChange={e => setRecordsInfo({...recordsInfo, medicalHistory: e.target.value})} 
+                  className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none" 
+                  placeholder="e.g., Diabetes Type 2, Hypertension, Previous surgeries..."
+                />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Allergies</label>
-                <textarea value={medicalInfo.allergies} onChange={e => setMedicalInfo({...medicalInfo, allergies: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" />
-              </div>
-               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Medications</label>
-                <textarea value={medicalInfo.medications} onChange={e => setMedicalInfo({...medicalInfo, medications: e.target.value})} className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" />
+                <textarea 
+                  value={recordsInfo.allergies} 
+                  onChange={e => setRecordsInfo({...recordsInfo, allergies: e.target.value})} 
+                  className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" 
+                  placeholder="e.g., Peanuts, Shellfish, Dairy..."
+                />
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Dietary History & Preferences</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">Medications</label>
                 <textarea 
-                    value={medicalInfo.dietaryHistory} 
-                    onChange={e => setMedicalInfo({...medicalInfo, dietaryHistory: e.target.value})} 
-                    className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
-                    placeholder="e.g., Previously tried keto, dislikes cilantro, prefers quick meals..."
-                 />
+                  value={recordsInfo.medications} 
+                  onChange={e => setRecordsInfo({...recordsInfo, medications: e.target.value})} 
+                  className="w-full mt-1 p-2 text-sm border rounded-md h-16 sm:h-20 resize-none" 
+                  placeholder="e.g., Metformin 500mg, Lisinopril 10mg..."
+                />
               </div>
-              <button onClick={handleSaveMedicalInfo} disabled={isSavingMedicalInfo} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b] text-sm">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Dietary History</label>
+                <textarea 
+                  value={recordsInfo.dietaryHistory} 
+                  onChange={e => setRecordsInfo({...recordsInfo, dietaryHistory: e.target.value})} 
+                  className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
+                  placeholder="e.g., Previously tried keto, dislikes cilantro, prefers quick meals..."
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Social Background</label>
+                <textarea 
+                  value={recordsInfo.socialBackground} 
+                  onChange={e => setRecordsInfo({...recordsInfo, socialBackground: e.target.value})} 
+                  className="w-full mt-1 p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
+                  placeholder="e.g., Works night shifts, lives with family, cultural dietary restrictions, occupation..."
+                />
+              </div>
+              <button onClick={handleSaveRecordsInfo} disabled={isSavingMedicalInfo} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b] text-sm">
                 {isSavingMedicalInfo ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
               </button>
             </div>
@@ -759,8 +861,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                  </div>
               </div>
               {fileToUpload && (
-                <button onClick={handleFileUpload} disabled={isUploading} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
-                    {isUploading ? <><Loader2 className="w-4 h-4 animate-spin"/> Uploading...</> : 'Upload Document'}
+                <button onClick={handleFileUpload} disabled={isUploading || isAnalyzing} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
+                    {isAnalyzing ? <><Loader2 className="w-4 h-4 animate-spin"/> Analyzing...</> : isUploading ? <><Loader2 className="w-4 h-4 animate-spin"/> Uploading...</> : 'Upload & Analyze Document'}
                 </button>
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -1159,6 +1261,93 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                     </button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {showExtractionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <div className="bg-slate-900 p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+              <h3 className="font-bold text-base sm:text-lg">Review Extracted Information</h3>
+              <button onClick={handleRejectExtraction} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+            </div>
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+              <p className="text-xs sm:text-sm text-slate-600 mb-4">The following information was extracted from the document. Review and accept to populate the records fields, or reject to discard.</p>
+              
+              {extractedData.medicalHistory && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Medical History</label>
+                  <textarea 
+                    value={extractedData.medicalHistory} 
+                    onChange={e => setExtractedData({...extractedData, medicalHistory: e.target.value})}
+                    className="w-full p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
+                  />
+                </div>
+              )}
+              
+              {extractedData.allergies && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Allergies</label>
+                  <textarea 
+                    value={extractedData.allergies} 
+                    onChange={e => setExtractedData({...extractedData, allergies: e.target.value})}
+                    className="w-full p-2 text-sm border rounded-md h-16 sm:h-20 resize-none"
+                  />
+                </div>
+              )}
+              
+              {extractedData.medications && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Medications</label>
+                  <textarea 
+                    value={extractedData.medications} 
+                    onChange={e => setExtractedData({...extractedData, medications: e.target.value})}
+                    className="w-full p-2 text-sm border rounded-md h-16 sm:h-20 resize-none"
+                  />
+                </div>
+              )}
+              
+              {extractedData.dietaryHistory && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Dietary History</label>
+                  <textarea 
+                    value={extractedData.dietaryHistory} 
+                    onChange={e => setExtractedData({...extractedData, dietaryHistory: e.target.value})}
+                    className="w-full p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
+                  />
+                </div>
+              )}
+              
+              {extractedData.socialBackground && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Social Background</label>
+                  <textarea 
+                    value={extractedData.socialBackground} 
+                    onChange={e => setExtractedData({...extractedData, socialBackground: e.target.value})}
+                    className="w-full p-2 text-sm border rounded-md h-20 sm:h-24 resize-none"
+                  />
+                </div>
+              )}
+              
+              {!extractedData.medicalHistory && !extractedData.allergies && !extractedData.medications && !extractedData.dietaryHistory && !extractedData.socialBackground && (
+                <p className="text-sm text-slate-500 text-center py-4">No relevant information was extracted from this document.</p>
+              )}
+            </div>
+            <div className="p-3 sm:p-4 bg-slate-50 border-t flex flex-col sm:flex-row justify-end gap-2 sticky bottom-0">
+              <button 
+                onClick={handleRejectExtraction} 
+                className="px-4 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base border border-slate-300 text-slate-700 hover:bg-slate-100"
+              >
+                Discard
+              </button>
+              <button 
+                onClick={handleAcceptExtraction} 
+                className="px-4 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base bg-[#8C3A36] text-white hover:bg-[#7a2f2b]"
+              >
+                Accept & Apply
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

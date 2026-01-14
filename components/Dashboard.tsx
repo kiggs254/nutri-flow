@@ -69,7 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     plansGenerated: 0
   });
 
-  const [initialProfileTab, setInitialProfileTab] = useState<'overview' | 'messages' | 'meal_plans' | 'food' | 'schedule' | 'billing' | 'medical'>('overview');
+  const [initialProfileTab, setInitialProfileTab] = useState<'overview' | 'messages' | 'meal_plans' | 'food' | 'schedule' | 'billing' | 'records'>('overview');
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const playNotificationSound = () => {

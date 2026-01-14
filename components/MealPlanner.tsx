@@ -102,6 +102,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         medicalHistory: selectedClient.medicalHistory || '',
         medications: selectedClient.medications || '',
         dietaryHistory: selectedClient.dietaryHistory || '',
+        socialBackground: selectedClient.socialBackground || '',
         customInstructions: '',
       });
       fetchSavedPlans(selectedClient.id);
