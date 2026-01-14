@@ -210,9 +210,19 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       if (invRes.data) setInvoices(invRes.data.map(i => ({
         id: i.id, clientId: i.client_id, amount: i.amount, currency: i.currency, status: i.status, dueDate: i.due_date, generatedAt: i.created_at, items: i.items || [], paymentMethod: i.payment_method, transactionRef: i.transaction_ref
       })));
-      if (msgRes.data) setMessages(msgRes.data.map((msg: any): Message => ({
-        id: msg.id, clientId: msg.client_id, sender: msg.sender, content: msg.content, createdAt: msg.created_at, isRead: msg.is_read
-      })));
+      if (msgRes.data) {
+        const formattedMessages: Message[] = msgRes.data.map((msg: any): Message => ({
+          id: msg.id, 
+          clientId: msg.client_id, 
+          sender: msg.sender, 
+          content: msg.content, 
+          createdAt: msg.created_at || new Date().toISOString(), 
+          isRead: msg.is_read || false
+        }));
+        // Sort by date ascending (oldest first, newest at bottom)
+        formattedMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        setMessages(formattedMessages);
+      }
       if (docsRes.data) setMedicalDocuments(docsRes.data.map((doc: any): MedicalDocument => ({
         id: doc.id, clientId: doc.client_id, uploadedAt: doc.created_at, fileName: doc.file_name, filePath: doc.file_path
       })));
@@ -241,18 +251,33 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
             clientId: rawMsg.client_id,
             sender: rawMsg.sender,
             content: rawMsg.content,
-            createdAt: rawMsg.created_at,
-            isRead: rawMsg.is_read,
+            createdAt: rawMsg.created_at || new Date().toISOString(),
+            isRead: rawMsg.is_read || false,
           };
           
           setMessages(prevMessages => {
             if (!prevMessages.some(m => m.id === newMessage.id)) {
-              return [...prevMessages, newMessage];
+              // Add new message and sort by date
+              const updated = [...prevMessages, newMessage];
+              updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+              return updated;
             }
             return prevMessages;
           });
         }
-      ).subscribe();
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `client_id=eq.${client.id}` },
+        (payload) => {
+          const updatedMsg = payload.new;
+          setMessages(prev => prev.map(msg => 
+            msg.id === updatedMsg.id 
+              ? { ...msg, isRead: updatedMsg.is_read || false }
+              : msg
+          ));
+        }
+      )
+      .subscribe();
     
     return () => {
       supabase.removeChannel(channel);
@@ -289,7 +314,11 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       createdAt: new Date().toISOString(),
       isRead: true
     };
-    setMessages(prev => [...prev, optimisticMessage]);
+    setMessages(prev => {
+      const updated = [...prev, optimisticMessage];
+      updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      return updated;
+    });
 
     try {
       const { data, error } = await supabase.from('messages').insert({
@@ -305,14 +334,22 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         clientId: data.client_id,
         sender: data.sender,
         content: data.content,
-        createdAt: data.created_at,
-        isRead: data.is_read
+        createdAt: data.created_at || new Date().toISOString(),
+        isRead: data.is_read || false
       };
 
-      setMessages(prev => prev.map(m => m.id === optimisticMessage.id ? finalMessage : m));
+      setMessages(prev => {
+        const updated = prev.map(m => m.id === optimisticMessage.id ? finalMessage : m);
+        updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return updated;
+      });
     } catch (err) {
       console.error("Failed to send message:", err);
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== optimisticMessage.id);
+        filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return filtered;
+      });
       setNewMessage(content);
     }
   };
@@ -946,7 +983,11 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                           <div className={`px-3 sm:px-4 py-2 rounded-2xl text-sm sm:text-base break-words ${msg.sender === 'nutritionist' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
                               {msg.content}
                           </div>
-                          <span className="text-xs text-slate-400 mt-1 px-1">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}</span>
+                          <span className="text-xs text-slate-400 mt-1 px-1">
+                            {msg.createdAt && !isNaN(new Date(msg.createdAt).getTime()) 
+                              ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })
+                              : 'Invalid Date'}
+                          </span>
                       </div>
                   ))}
                   <div ref={messagesEndRef} />

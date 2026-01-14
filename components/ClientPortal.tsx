@@ -188,7 +188,19 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           setFoodLogs(formattedFoodLogs);
         }
         if(apptRes.data) setAppointments(apptRes.data as Appointment[]);
-        if(msgRes.data) setMessages(msgRes.data as Message[]);
+        if(msgRes.data) {
+          const formattedMessages: Message[] = (msgRes.data as any[]).map((msg: any) => ({
+            id: msg.id,
+            clientId: msg.client_id,
+            sender: msg.sender,
+            content: msg.content,
+            createdAt: msg.created_at || new Date().toISOString(),
+            isRead: msg.is_read || false
+          }));
+          // Sort by date ascending (oldest first, newest at bottom)
+          formattedMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          setMessages(formattedMessages);
+        }
 
       } catch (err: any) {
         setError(err.message);
@@ -208,15 +220,26 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `client_id=eq.${clientId}` },
         (payload) => {
           const rawMsg = payload.new;
-          const newMessage: Message = { id: rawMsg.id, clientId: rawMsg.client_id, sender: rawMsg.sender, content: rawMsg.content, createdAt: rawMsg.created_at, isRead: rawMsg.is_read };
+          const newMessage: Message = { 
+            id: rawMsg.id, 
+            clientId: rawMsg.client_id, 
+            sender: rawMsg.sender, 
+            content: rawMsg.content, 
+            createdAt: rawMsg.created_at || new Date().toISOString(), 
+            isRead: rawMsg.is_read || false 
+          };
+          
+          setMessages(prev => {
+            if (!prev.some(m => m.id === newMessage.id)) {
+              // Add new message and sort by date
+              const updated = [...prev, newMessage];
+              updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+              return updated;
+            }
+            return prev;
+          });
           
           if (newMessage.sender === 'nutritionist') {
-             setMessages(prev => {
-                if (!prev.some(m => m.id === newMessage.id)) {
-                  return [...prev, newMessage];
-                }
-                return prev;
-             });
              const newNotification: Notification = { 
                 id: newMessage.id, 
                 clientId: newMessage.clientId, 
@@ -229,7 +252,19 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
              setUnreadCount(prev => prev + 1);
           }
         }
-      ).subscribe();
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `client_id=eq.${clientId}` },
+        (payload) => {
+          const updatedMsg = payload.new;
+          setMessages(prev => prev.map(msg => 
+            msg.id === updatedMsg.id 
+              ? { ...msg, isRead: updatedMsg.is_read || false }
+              : msg
+          ));
+        }
+      )
+      .subscribe();
 
     const invoicesChannel = supabase.channel(`client-portal-invoices-${clientId}`)
       .on('postgres_changes', 
@@ -386,8 +421,19 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     const content = newMessage.trim();
     setNewMessage('');
     const tempId = `temp_${Date.now()}`;
-    const optimisticMessage: Message = { id: tempId, clientId: client.id, sender: 'client', content, createdAt: new Date().toISOString(), isRead: false };
-    setMessages(prev => [...prev, optimisticMessage]);
+    const optimisticMessage: Message = { 
+      id: tempId, 
+      clientId: client.id, 
+      sender: 'client', 
+      content, 
+      createdAt: new Date().toISOString(), 
+      isRead: false 
+    };
+    setMessages(prev => {
+      const updated = [...prev, optimisticMessage];
+      updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      return updated;
+    });
     try {
       const { data, error } = await supabase.rpc('insert_portal_message', {
         p_portal_token: portalToken,
@@ -395,9 +441,28 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       }).then(res => ({ data: res.data?.[0], error: res.error }));
       
       if (error) throw error;
-      setMessages(prev => prev.map(m => m.id === tempId ? (data as Message) : m));
+      
+      if (data) {
+        const formattedMessage: Message = {
+          id: data.id,
+          clientId: data.client_id,
+          sender: data.sender,
+          content: data.content,
+          createdAt: data.created_at || new Date().toISOString(),
+          isRead: data.is_read || false
+        };
+        setMessages(prev => {
+          const updated = prev.map(m => m.id === tempId ? formattedMessage : m);
+          updated.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          return updated;
+        });
+      }
     } catch (err) {
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== tempId);
+        filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return filtered;
+      });
       setNewMessage(content);
     }
   };
@@ -680,7 +745,21 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         return (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-14rem)] sm:h-[calc(100vh-17rem)] lg:h-[calc(100vh-16rem)]">
                 <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 p-3 sm:p-4 border-b">Messages</h2>
-                <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto flex flex-col">{messages.map(msg => <div key={msg.id} className={`flex flex-col max-w-[75%] sm:max-w-xs lg:max-w-md ${msg.sender === 'client' ? 'self-end items-end' : 'self-start items-start'}`}><div className={`px-3 sm:px-4 py-2 rounded-2xl text-sm sm:text-base ${msg.sender === 'client' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>{msg.content}</div><span className="text-[10px] sm:text-xs text-slate-400 mt-1 px-1">{new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>)}<div ref={messagesEndRef} /></div>
+                <div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto flex flex-col">
+                  {messages.map(msg => (
+                    <div key={msg.id} className={`flex flex-col max-w-[75%] sm:max-w-xs lg:max-w-md ${msg.sender === 'client' ? 'self-end items-end' : 'self-start items-start'}`}>
+                      <div className={`px-3 sm:px-4 py-2 rounded-2xl text-sm sm:text-base ${msg.sender === 'client' ? 'bg-[#8C3A36] text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
+                        {msg.content}
+                      </div>
+                      <span className="text-[10px] sm:text-xs text-slate-400 mt-1 px-1">
+                        {msg.createdAt && !isNaN(new Date(msg.createdAt).getTime()) 
+                          ? new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                          : 'Invalid Date'}
+                      </span>
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
                 <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t bg-slate-50 flex items-center gap-2 sm:gap-3 sticky bottom-0"><input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 w-full p-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" /><button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50 flex-shrink-0" disabled={!newMessage.trim()}><Send className="w-4 h-4 sm:w-5 sm:h-5"/></button></form>
             </div>
         );
