@@ -14,6 +14,8 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
   const [showAddModal, setShowAddModal] = useState(false);
   
   // Form State
+  const [newLogBodyFatFormat, setNewLogBodyFatFormat] = useState<'percentage' | 'kg'>('percentage');
+  const [newLogMuscleFormat, setNewLogMuscleFormat] = useState<'kg' | 'percentage'>('kg');
   const [newLog, setNewLog] = useState({
     date: new Date().toISOString().split('T')[0],
     weight: '',
@@ -42,6 +44,10 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
         skeletalMuscleMass: lastMuscleMass,
         skeletalMusclePercentage: lastMusclePercent
       }));
+
+      // Set formats based on available data
+      setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'percentage'));
+      setNewLogMuscleFormat(lastMuscleMass ? 'kg' : (lastMusclePercent ? 'percentage' : 'kg'));
 
     } else {
       setLogs([]);
@@ -147,7 +153,28 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
       <div className="flex justify-between items-center">
          <h2 className="text-2xl font-bold text-slate-900">Progress: {selectedClient.name}</h2>
          <button 
-           onClick={() => setShowAddModal(true)}
+           onClick={() => {
+             // Reset formats based on current client values
+             const lastFatPercent = selectedClient.bodyFatPercentage?.toString() || '';
+             const lastFatMass = selectedClient.bodyFatMass?.toString() || '';
+             const lastMuscleMass = selectedClient.skeletalMuscleMass?.toString() || '';
+             const lastMusclePercent = selectedClient.skeletalMusclePercentage?.toString() || '';
+
+             setNewLogBodyFatFormat(lastFatPercent ? 'percentage' : (lastFatMass ? 'kg' : 'percentage'));
+             setNewLogMuscleFormat(lastMuscleMass ? 'kg' : (lastMusclePercent ? 'percentage' : 'kg'));
+
+             setNewLog(prev => ({
+               ...prev,
+               date: new Date().toISOString().split('T')[0],
+               weight: selectedClient.weight?.toString() || '',
+               bodyFatPercentage: lastFatPercent,
+               bodyFatMass: lastFatMass,
+               skeletalMuscleMass: lastMuscleMass,
+               skeletalMusclePercentage: lastMusclePercent,
+             }));
+
+             setShowAddModal(true);
+           }}
            className="bg-[#8C3A36] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#7a2f2b] flex items-center gap-2 shadow-sm"
          >
            <Plus className="w-4 h-4" /> Log Progress
@@ -310,18 +337,96 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Body Fat</label>
-                            <div className="flex gap-2">
-                                <input type="number" step="0.1" placeholder="%" className="w-full p-2 border border-slate-300 rounded-lg" value={newLog.bodyFatPercentage} onChange={e => setNewLog({...newLog, bodyFatPercentage: e.target.value})} />
-                                <input type="number" step="0.1" placeholder="kg" className="w-full p-2 border border-slate-300 rounded-lg" value={newLog.bodyFatMass} onChange={e => setNewLog({...newLog, bodyFatMass: e.target.value})} />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-slate-700 uppercase">Body Fat</label>
+                                <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNewLogBodyFatFormat('percentage');
+                                            setNewLog({...newLog, bodyFatMass: ''});
+                                        }}
+                                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${newLogBodyFatFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                    >
+                                        %
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNewLogBodyFatFormat('kg');
+                                            setNewLog({...newLog, bodyFatPercentage: ''});
+                                        }}
+                                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${newLogBodyFatFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                    >
+                                        kg
+                                    </button>
+                                </div>
                             </div>
+                            {newLogBodyFatFormat === 'percentage' ? (
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full p-2 border border-slate-300 rounded-lg"
+                                    value={newLog.bodyFatPercentage}
+                                    onChange={e => setNewLog({...newLog, bodyFatPercentage: e.target.value, bodyFatMass: ''})}
+                                />
+                            ) : (
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="kg"
+                                    className="w-full p-2 border border-slate-300 rounded-lg"
+                                    value={newLog.bodyFatMass}
+                                    onChange={e => setNewLog({...newLog, bodyFatMass: e.target.value, bodyFatPercentage: ''})}
+                                />
+                            )}
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Skeletal Muscle</label>
-                            <div className="flex gap-2">
-                                <input type="number" step="0.1" placeholder="kg" className="w-full p-2 border border-slate-300 rounded-lg" value={newLog.skeletalMuscleMass} onChange={e => setNewLog({...newLog, skeletalMuscleMass: e.target.value})} />
-                                <input type="number" step="0.1" placeholder="%" className="w-full p-2 border border-slate-300 rounded-lg" value={newLog.skeletalMusclePercentage} onChange={e => setNewLog({...newLog, skeletalMusclePercentage: e.target.value})} />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-slate-700 uppercase">Skeletal Muscle</label>
+                                <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNewLogMuscleFormat('kg');
+                                            setNewLog({...newLog, skeletalMusclePercentage: ''});
+                                        }}
+                                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${newLogMuscleFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                    >
+                                        kg
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNewLogMuscleFormat('percentage');
+                                            setNewLog({...newLog, skeletalMuscleMass: ''});
+                                        }}
+                                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${newLogMuscleFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                    >
+                                        %
+                                    </button>
+                                </div>
                             </div>
+                            {newLogMuscleFormat === 'kg' ? (
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="kg"
+                                    className="w-full p-2 border border-slate-300 rounded-lg"
+                                    value={newLog.skeletalMuscleMass}
+                                    onChange={e => setNewLog({...newLog, skeletalMuscleMass: e.target.value, skeletalMusclePercentage: ''})}
+                                />
+                            ) : (
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full p-2 border border-slate-300 rounded-lg"
+                                    value={newLog.skeletalMusclePercentage}
+                                    onChange={e => setNewLog({...newLog, skeletalMusclePercentage: e.target.value, skeletalMuscleMass: ''})}
+                                />
+                            )}
                         </div>
                     </div>
                  </div>
