@@ -174,7 +174,17 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           setProgressLogs(formattedLogs);
         }
         if (invoiceRes.data) setInvoices(invoiceRes.data as Invoice[]);
-        if (foodLogRes.data) setFoodLogs(foodLogRes.data as FoodLog[]);
+        if (foodLogRes.data) {
+          const formattedFoodLogs: FoodLog[] = (foodLogRes.data as any[]).map((log: any) => ({
+            id: log.id,
+            clientId: log.client_id,
+            aiAnalysis: log.ai_analysis || null,
+            imageUrl: log.image_url || null,
+            notes: log.notes || null,
+            createdAt: log.created_at || new Date().toISOString()
+          }));
+          setFoodLogs(formattedFoodLogs);
+        }
         if(apptRes.data) setAppointments(apptRes.data as Appointment[]);
         if(msgRes.data) setMessages(msgRes.data as Message[]);
 
@@ -350,10 +360,10 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         const formattedLog: FoodLog = {
           id: newLog.id,
           clientId: newLog.client_id,
-          aiAnalysis: newLog.ai_analysis,
-          imageUrl: newLog.image_url,
-          notes: newLog.notes,
-          createdAt: newLog.created_at
+          aiAnalysis: newLog.ai_analysis || null,
+          imageUrl: newLog.image_url || null,
+          notes: newLog.notes || null,
+          createdAt: newLog.created_at || new Date().toISOString()
         };
         setFoodLogs([formattedLog, ...foodLogs]);
       }
@@ -605,7 +615,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                                             {log.imageUrl ? <img src={log.imageUrl} alt="Food log" className="w-12 h-12 rounded-md object-cover bg-slate-200 flex-shrink-0"/> : <div className="w-12 h-12 rounded-md bg-slate-200 flex items-center justify-center flex-shrink-0"><FileText className="w-6 h-6 text-slate-400" /></div>}
                                             <div className="flex-1 overflow-hidden text-left">
                                                 <p className="font-semibold text-slate-700 text-sm truncate">{log.notes ? log.notes : 'Image Log Entry'}</p>
-                                                <p className="text-xs font-bold text-slate-400 uppercase">{new Date(log.createdAt).toLocaleString()}</p>
+                                                <p className="text-xs font-bold text-slate-400 uppercase">
+                                                  {log.createdAt ? new Date(log.createdAt).toLocaleString() : 'Invalid Date'}
+                                                </p>
                                             </div>
                                         </div>
                                         {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-500 flex-shrink-0 ml-2" /> : <ChevronDown className="w-5 h-5 text-slate-500 flex-shrink-0 ml-2" />}
