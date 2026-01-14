@@ -82,6 +82,30 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, activeTab]);
 
+  // Calculate unread message count (messages from nutritionist that are unread)
+  const unreadMessageCount = messages.filter(msg => msg.sender === 'nutritionist' && !msg.isRead).length;
+
+  // Mark messages as read when messages tab is opened
+  useEffect(() => {
+    if (activeTab === 'messages' && client?.id) {
+      const markAsRead = async () => {
+        await supabase.from('messages')
+          .update({ is_read: true })
+          .eq('client_id', client.id)
+          .eq('sender', 'nutritionist')
+          .eq('is_read', false);
+        
+        // Update local state
+        setMessages(prev => prev.map(msg => 
+          msg.sender === 'nutritionist' && !msg.isRead 
+            ? { ...msg, isRead: true }
+            : msg
+        ));
+      };
+      markAsRead();
+    }
+  }, [activeTab, client?.id]);
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -846,7 +870,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
               <ShortcutCard icon={<Utensils className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Meal Plan" onClick={() => setActiveTab('meal_plan')} />
               <ShortcutCard icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Food Diary" onClick={() => setActiveTab('food_diary')} />
               <ShortcutCard icon={<Calendar className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Appointments" onClick={() => setActiveTab('appointments')} />
-              <ShortcutCard icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
+              <div className="relative">
+                <ShortcutCard icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
+                {unreadMessageCount > 0 && activeTab !== 'messages' && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                  </span>
+                )}
+              </div>
               <ShortcutCard icon={<CreditCard className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Billing" onClick={() => setActiveTab('billing')} />
             </div>
           
@@ -1008,8 +1039,13 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 }, { id: 'meal_plan', label: 'Meal Plan', icon: Utensils }, { id: 'food_diary', label: 'Food Diary', icon: Camera }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'messages', label: 'Messages', icon: MessageSquare }, { id: 'billing', label: 'Billing', icon: CreditCard }
             ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`relative flex-shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
                 <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"/><span>{tab.label}</span>
+                {tab.id === 'messages' && unreadMessageCount > 0 && activeTab !== 'messages' && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
+                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>

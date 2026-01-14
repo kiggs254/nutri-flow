@@ -288,13 +288,24 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, activeTab]);
 
+  // Calculate unread message count (messages from client that are unread)
+  const unreadMessageCount = messages.filter(msg => msg.sender === 'client' && !msg.isRead).length;
+
   useEffect(() => {
     if (activeTab === 'messages') {
       const markAsRead = async () => {
         await supabase.from('messages')
           .update({ is_read: true })
           .eq('client_id', client.id)
-          .eq('sender', 'client');
+          .eq('sender', 'client')
+          .eq('is_read', false);
+        
+        // Update local state
+        setMessages(prev => prev.map(msg => 
+          msg.sender === 'client' && !msg.isRead 
+            ? { ...msg, isRead: true }
+            : msg
+        ));
       };
       markAsRead();
     }
@@ -1259,12 +1270,17 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
             <button 
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0
+              className={`relative flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0
                 ${activeTab === tab.id 
                   ? 'border-b-2 border-[#8C3A36] text-[#8C3A36]' 
                   : 'text-slate-500 hover:text-slate-800'}`}
             >
               <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" /> <span>{tab.label}</span>
+              {tab.id === 'messages' && unreadMessageCount > 0 && activeTab !== 'messages' && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
+                  {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
