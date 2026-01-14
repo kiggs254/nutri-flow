@@ -91,11 +91,48 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
       }
 
       try {
-        const { data: clientData, error: clientError } = await supabase.rpc('get_portal_client_data', { p_portal_token: portalToken }).then(res => ({ data: res.data?.[0], error: res.error }));
+        const { data: clientData, error: clientError } = await supabase
+          .rpc('get_portal_client_data', { p_portal_token: portalToken })
+          .then(res => ({ data: res.data?.[0], error: res.error }));
 
         if (clientError || !clientData) throw new Error("Client portal not found or access denied.");
-        
-        setClient(clientData as Client);
+
+        // Normalise client data from DB (snake_case) into our Client interface (camelCase)
+        const formattedClient: Client = {
+          id: clientData.id,
+          name: clientData.name,
+          email: clientData.email,
+          status: clientData.status || 'Active',
+          goal: clientData.goal || 'General Health',
+          lastCheckIn: clientData.last_check_in
+            ? new Date(clientData.last_check_in).toLocaleDateString()
+            : 'Never',
+          avatarUrl:
+            clientData.avatar_url ||
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+              clientData.name || 'Client'
+            )}&background=93C47D&color=fff`,
+          joinedAt: clientData.created_at,
+          portalAccessToken: clientData.portal_access_token,
+          age: clientData.age,
+          gender: clientData.gender,
+          weight: clientData.weight,
+          height: clientData.height,
+          activityLevel: clientData.activity_level,
+          allergies: clientData.allergies,
+          preferences: clientData.preferences,
+          medicalHistory: clientData.medical_history,
+          medications: clientData.medications,
+          dietaryHistory: clientData.dietary_history,
+          socialBackground: clientData.social_background,
+          habits: clientData.habits ? JSON.parse(clientData.habits) : undefined,
+          bodyFatPercentage: clientData.body_fat_percentage,
+          bodyFatMass: clientData.body_fat_mass,
+          skeletalMuscleMass: clientData.skeletal_muscle_mass,
+          skeletalMusclePercentage: clientData.skeletal_muscle_percentage,
+        };
+
+        setClient(formattedClient);
 
         const { data: keyData, error: keyError } = await supabase.rpc('get_paystack_key_for_client', { p_portal_token: portalToken });
         if (keyError) {
@@ -121,7 +158,20 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
             if (formattedPlan.planData && formattedPlan.planData.length > 0) setExpandedDay(formattedPlan.planData[0].day);
         }
 
-        if (progressRes.data) setProgressLogs(progressRes.data as ProgressLog[]);
+        if (progressRes.data) {
+          const formattedLogs: ProgressLog[] = (progressRes.data as any[]).map((log: any) => ({
+            id: log.id,
+            date: log.date,
+            weight: log.weight,
+            complianceScore: log.compliance_score,
+            notes: log.notes,
+            bodyFatPercentage: log.body_fat_percentage,
+            bodyFatMass: log.body_fat_mass,
+            skeletalMuscleMass: log.skeletal_muscle_mass,
+            skeletalMusclePercentage: log.skeletal_muscle_percentage,
+          }));
+          setProgressLogs(formattedLogs);
+        }
         if (invoiceRes.data) setInvoices(invoiceRes.data as Invoice[]);
         if (foodLogRes.data) setFoodLogs(foodLogRes.data as FoodLog[]);
         if(apptRes.data) setAppointments(apptRes.data as Appointment[]);
