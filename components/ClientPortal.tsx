@@ -870,14 +870,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
               <ShortcutCard icon={<Utensils className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Meal Plan" onClick={() => setActiveTab('meal_plan')} />
               <ShortcutCard icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Food Diary" onClick={() => setActiveTab('food_diary')} />
               <ShortcutCard icon={<Calendar className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Appointments" onClick={() => setActiveTab('appointments')} />
-              <div className="relative">
-                <ShortcutCard icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
-                {unreadMessageCount > 0 && activeTab !== 'messages' && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
-                  </span>
-                )}
-              </div>
+              <ShortcutCard icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Messages" onClick={() => setActiveTab('messages')} />
               <ShortcutCard icon={<CreditCard className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Billing" onClick={() => setActiveTab('billing')} />
             </div>
           
@@ -962,7 +955,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         <header className="bg-white shadow-sm sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
             <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-                <img src="https://nutritherapy.co.ke/wp-content/uploads/2024/08/Untitled-design-2024-08-28T154953.396.png" alt="NutriTherapy Solutions Logo" className="h-8 sm:h-10" />
+                <img src="https://nutritherapy.co.ke/wp-content/uploads/2024/08/Untitled-design-2024-08-28T154953.396.png" alt="NutriTherapy Solutions Logo" className="h-8 sm:h-10 -ml-3 sm:-ml-4 lg:-ml-8" />
                 <div className="relative sm:hidden">
                     <button 
                     onClick={() => {
@@ -1035,14 +1028,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                 </div>
             </div>
           </div>
-          <nav className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 flex border-t border-slate-200 overflow-x-auto -mx-3 sm:mx-0" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
+          <nav className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 flex border-t border-slate-200 overflow-x-auto" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 }, { id: 'meal_plan', label: 'Meal Plan', icon: Utensils }, { id: 'food_diary', label: 'Food Diary', icon: Camera }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'messages', label: 'Messages', icon: MessageSquare }, { id: 'billing', label: 'Billing', icon: CreditCard }
             ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`relative flex-shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`relative flex-shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 pr-6 sm:pr-8 text-xs sm:text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-[#8C3A36] text-[#8C3A36]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
                 <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"/><span>{tab.label}</span>
                 {tab.id === 'messages' && unreadMessageCount > 0 && activeTab !== 'messages' && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
+                  <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
                     {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
                   </span>
                 )}
