@@ -150,6 +150,20 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   const [extractedData, setExtractedData] = useState<ExtractedRecords>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [billingSettings, setBillingSettings] = useState<Partial<BillingSettings>>({ currency: 'USD' });
+  
+  // Progress Logging State
+  const [showProgressLogModal, setShowProgressLogModal] = useState(false);
+  const [progressLog, setProgressLog] = useState({
+    date: new Date().toISOString().split('T')[0],
+    weight: client.weight?.toString() || '',
+    complianceScore: 80,
+    notes: '',
+    bodyFatPercentage: client.bodyFatPercentage?.toString() || '',
+    bodyFatMass: client.bodyFatMass?.toString() || '',
+    skeletalMuscleMass: client.skeletalMuscleMass?.toString() || '',
+    skeletalMusclePercentage: client.skeletalMusclePercentage?.toString() || '',
+  });
+  const [savingProgressLog, setSavingProgressLog] = useState(false);
 
 
   useEffect(() => {
@@ -616,6 +630,71 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     setFileToUpload(null);
   };
 
+  const handleSaveProgressLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingProgressLog(true);
+    try {
+      const { error } = await supabase.from('progress_logs').insert({
+        client_id: client.id,
+        date: progressLog.date,
+        weight: parseFloat(progressLog.weight),
+        compliance_score: progressLog.complianceScore,
+        notes: progressLog.notes,
+        body_fat_percentage: progressLog.bodyFatPercentage ? parseFloat(progressLog.bodyFatPercentage) : null,
+        body_fat_mass: progressLog.bodyFatMass ? parseFloat(progressLog.bodyFatMass) : null,
+        skeletal_muscle_mass: progressLog.skeletalMuscleMass ? parseFloat(progressLog.skeletalMuscleMass) : null,
+        skeletal_muscle_percentage: progressLog.skeletalMusclePercentage ? parseFloat(progressLog.skeletalMusclePercentage) : null,
+      });
+
+      if (error) throw error;
+
+      // Update client with latest values
+      const { data: updatedClientData, error: updateError } = await supabase
+        .from('clients')
+        .update({
+          weight: parseFloat(progressLog.weight),
+          body_fat_percentage: progressLog.bodyFatPercentage ? parseFloat(progressLog.bodyFatPercentage) : null,
+          body_fat_mass: progressLog.bodyFatMass ? parseFloat(progressLog.bodyFatMass) : null,
+          skeletal_muscle_mass: progressLog.skeletalMuscleMass ? parseFloat(progressLog.skeletalMuscleMass) : null,
+          skeletal_muscle_percentage: progressLog.skeletalMusclePercentage ? parseFloat(progressLog.skeletalMusclePercentage) : null,
+        })
+        .eq('id', client.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      if (updatedClientData) {
+        const updatedClient: Client = {
+          ...client,
+          weight: updatedClientData.weight,
+          bodyFatPercentage: updatedClientData.body_fat_percentage,
+          bodyFatMass: updatedClientData.body_fat_mass,
+          skeletalMuscleMass: updatedClientData.skeletal_muscle_mass,
+          skeletalMusclePercentage: updatedClientData.skeletal_muscle_percentage,
+        };
+        onUpdateClient(updatedClient);
+      }
+
+      setShowProgressLogModal(false);
+      setProgressLog({
+        date: new Date().toISOString().split('T')[0],
+        weight: progressLog.weight,
+        complianceScore: 80,
+        notes: '',
+        bodyFatPercentage: progressLog.bodyFatPercentage,
+        bodyFatMass: progressLog.bodyFatMass,
+        skeletalMuscleMass: progressLog.skeletalMuscleMass,
+        skeletalMusclePercentage: progressLog.skeletalMusclePercentage,
+      });
+      alert('Progress logged successfully!');
+    } catch (e: any) {
+      alert('Error logging progress: ' + e.message);
+    } finally {
+      setSavingProgressLog(false);
+    }
+  };
+
   const handleDownloadFile = async (filePath: string, fileName: string) => {
     try {
       const { data, error } = await supabase.storage.from('medical_documents').download(filePath);
@@ -705,8 +784,18 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
                <StatCard label="Age" value={client.age ?? 'N/A'} unit="yrs" icon={<User className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />} />
                <StatCard label="Weight" value={client.weight ?? 'N/A'} unit="kg" icon={<Activity className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />} />
-               <StatCard label="Body Fat" value={client.bodyFatPercentage ?? 'N/A'} unit="%" icon={<Droplet className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500" />} />
-               <StatCard label="Muscle Mass" value={client.skeletalMuscleMass ?? 'N/A'} unit="kg" icon={<Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />} />
+               <StatCard 
+                 label="Body Fat" 
+                 value={client.bodyFatPercentage ?? (client.bodyFatMass ?? 'N/A')} 
+                 unit={client.bodyFatPercentage ? '%' : (client.bodyFatMass ? 'kg' : '')} 
+                 icon={<Droplet className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500" />} 
+               />
+               <StatCard 
+                 label="Muscle Mass" 
+                 value={client.skeletalMuscleMass ?? (client.skeletalMusclePercentage ?? 'N/A')} 
+                 unit={client.skeletalMuscleMass ? 'kg' : (client.skeletalMusclePercentage ? '%' : '')} 
+                 icon={<Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />} 
+               />
              </div>
              
              <div className="bg-white rounded-lg border p-4 sm:p-6">
@@ -715,9 +804,17 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                         <h3 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2"><Brain className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]"/> AI Coach Insights</h3>
                         <p className="text-xs sm:text-sm text-slate-500">A quick summary of recent progress.</p>
                     </div>
-                    <button onClick={handleGenerateInsight} disabled={generatingInsight} className="text-xs sm:text-sm font-medium text-[#8C3A36] hover:text-[#7a2f2b] flex items-center gap-1 disabled:opacity-50">
-                        <RefreshCw className={`w-3 h-3 ${generatingInsight ? 'animate-spin': ''}`} /> {generatingInsight ? 'Generating...' : 'Regenerate'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setShowProgressLogModal(true)}
+                            className="bg-[#8C3A36] text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7a2f2b] flex items-center gap-1.5 sm:gap-2 shadow-sm"
+                        >
+                            <Plus className="w-3 h-3 sm:w-4 sm:h-4" /> Log Progress
+                        </button>
+                        <button onClick={handleGenerateInsight} disabled={generatingInsight} className="text-xs sm:text-sm font-medium text-[#8C3A36] hover:text-[#7a2f2b] flex items-center gap-1 disabled:opacity-50">
+                            <RefreshCw className={`w-3 h-3 ${generatingInsight ? 'animate-spin': ''}`} /> {generatingInsight ? 'Generating...' : 'Regenerate'}
+                        </button>
+                    </div>
                 </div>
                 <div className="bg-slate-50/70 p-3 sm:p-4 rounded-md border min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm text-slate-700 leading-relaxed">
                    {generatingInsight && <p className="animate-pulse">Analyzing data...</p>}
@@ -1348,6 +1445,116 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showProgressLogModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+          <form onSubmit={handleSaveProgressLog} className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <div className="bg-[#8C3A36] p-4 sm:p-5 text-white flex justify-between items-center sticky top-0">
+              <h3 className="font-bold text-base sm:text-lg">Log Progress</h3>
+              <button type="button" onClick={() => setShowProgressLogModal(false)} className="p-1 flex-shrink-0"><X className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+            </div>
+            <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date</label>
+                <input 
+                  type="date" 
+                  required
+                  className="w-full p-2 text-sm border border-slate-300 rounded-lg"
+                  value={progressLog.date}
+                  onChange={e => setProgressLog({...progressLog, date: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Weight (kg)</label>
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  required 
+                  className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
+                  value={progressLog.weight} 
+                  onChange={e => setProgressLog({...progressLog, weight: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Body Fat</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      placeholder="%" 
+                      className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
+                      value={progressLog.bodyFatPercentage} 
+                      onChange={e => setProgressLog({...progressLog, bodyFatPercentage: e.target.value})} 
+                    />
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      placeholder="kg" 
+                      className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
+                      value={progressLog.bodyFatMass} 
+                      onChange={e => setProgressLog({...progressLog, bodyFatMass: e.target.value})} 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Muscle Mass</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      placeholder="kg" 
+                      className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
+                      value={progressLog.skeletalMuscleMass} 
+                      onChange={e => setProgressLog({...progressLog, skeletalMuscleMass: e.target.value})} 
+                    />
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      placeholder="%" 
+                      className="w-full p-2 text-sm border border-slate-300 rounded-lg" 
+                      value={progressLog.skeletalMusclePercentage} 
+                      onChange={e => setProgressLog({...progressLog, skeletalMusclePercentage: e.target.value})} 
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Compliance Score (0-100%)</label>
+                <div className="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    className="flex-1"
+                    value={progressLog.complianceScore}
+                    onChange={e => setProgressLog({...progressLog, complianceScore: parseInt(e.target.value)})}
+                  />
+                  <span className="font-bold w-12 text-right text-sm">{progressLog.complianceScore}%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Notes</label>
+                <textarea 
+                  className="w-full p-2 text-sm border border-slate-300 rounded-lg h-20 sm:h-24 resize-none"
+                  placeholder="Meeting notes, observations..."
+                  value={progressLog.notes}
+                  onChange={e => setProgressLog({...progressLog, notes: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end sticky bottom-0">
+              <button 
+                type="submit" 
+                disabled={savingProgressLog} 
+                className="bg-[#8C3A36] text-white px-4 sm:px-6 py-2 rounded-lg font-bold disabled:opacity-50 hover:bg-[#7a2f2b] text-sm sm:text-base flex items-center gap-2"
+              >
+                {savingProgressLog ? <><Loader2 className="w-4 h-4 animate-spin"/> Saving...</> : 'Save Progress Log'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

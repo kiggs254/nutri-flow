@@ -20,6 +20,8 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
+  const [bodyFatFormat, setBodyFatFormat] = useState<'percentage' | 'kg'>('percentage');
+  const [muscleMassFormat, setMuscleMassFormat] = useState<'kg' | 'percentage'>('kg');
   const [newClient, setNewClient] = useState({
     name: '',
     email: '',
@@ -89,6 +91,8 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       
       setShowAddModal(false);
       setShowAdvancedFields(false);
+      setBodyFatFormat('percentage');
+      setMuscleMassFormat('kg');
       setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
@@ -340,18 +344,96 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                 </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="text-xs font-bold text-slate-700 uppercase">Body Fat</label>
-                        <div className="flex gap-2 mt-1">
-                            <input type="number" step="0.1" placeholder="%" className="w-full p-2 border border-slate-300 rounded-lg" value={newClient.bodyFatPercentage} onChange={e => setNewClient({...newClient, bodyFatPercentage: e.target.value})} />
-                            <input type="number" step="0.1" placeholder="kg" className="w-full p-2 border border-slate-300 rounded-lg" value={newClient.bodyFatMass} onChange={e => setNewClient({...newClient, bodyFatMass: e.target.value})} />
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-slate-700 uppercase">Body Fat</label>
+                            <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBodyFatFormat('percentage');
+                                        setNewClient({...newClient, bodyFatMass: ''});
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${bodyFatFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                >
+                                    %
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBodyFatFormat('kg');
+                                        setNewClient({...newClient, bodyFatPercentage: ''});
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${bodyFatFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                >
+                                    kg
+                                </button>
+                            </div>
                         </div>
+                        {bodyFatFormat === 'percentage' ? (
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                placeholder="%" 
+                                className="w-full p-2 border border-slate-300 rounded-lg" 
+                                value={newClient.bodyFatPercentage} 
+                                onChange={e => setNewClient({...newClient, bodyFatPercentage: e.target.value, bodyFatMass: ''})} 
+                            />
+                        ) : (
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                placeholder="kg" 
+                                className="w-full p-2 border border-slate-300 rounded-lg" 
+                                value={newClient.bodyFatMass} 
+                                onChange={e => setNewClient({...newClient, bodyFatMass: e.target.value, bodyFatPercentage: ''})} 
+                            />
+                        )}
                     </div>
                      <div>
-                        <label className="text-xs font-bold text-slate-700 uppercase">Skeletal Muscle</label>
-                        <div className="flex gap-2 mt-1">
-                            <input type="number" step="0.1" placeholder="kg" className="w-full p-2 border border-slate-300 rounded-lg" value={newClient.skeletalMuscleMass} onChange={e => setNewClient({...newClient, skeletalMuscleMass: e.target.value})} />
-                            <input type="number" step="0.1" placeholder="%" className="w-full p-2 border border-slate-300 rounded-lg" value={newClient.skeletalMusclePercentage} onChange={e => setNewClient({...newClient, skeletalMusclePercentage: e.target.value})} />
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-slate-700 uppercase">Muscle Mass</label>
+                            <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMuscleMassFormat('kg');
+                                        setNewClient({...newClient, skeletalMusclePercentage: ''});
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${muscleMassFormat === 'kg' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                >
+                                    kg
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMuscleMassFormat('percentage');
+                                        setNewClient({...newClient, skeletalMuscleMass: ''});
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${muscleMassFormat === 'percentage' ? 'bg-white text-[#8C3A36] shadow-sm' : 'text-slate-600'}`}
+                                >
+                                    %
+                                </button>
+                            </div>
                         </div>
+                        {muscleMassFormat === 'kg' ? (
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                placeholder="kg" 
+                                className="w-full p-2 border border-slate-300 rounded-lg" 
+                                value={newClient.skeletalMuscleMass} 
+                                onChange={e => setNewClient({...newClient, skeletalMuscleMass: e.target.value, skeletalMusclePercentage: ''})} 
+                            />
+                        ) : (
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                placeholder="%" 
+                                className="w-full p-2 border border-slate-300 rounded-lg" 
+                                value={newClient.skeletalMusclePercentage} 
+                                onChange={e => setNewClient({...newClient, skeletalMusclePercentage: e.target.value, skeletalMuscleMass: ''})} 
+                            />
+                        )}
                     </div>
                 </div>
                 <div className="space-y-1">

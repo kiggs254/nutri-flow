@@ -648,8 +648,36 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                         <h3 className="font-bold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Current Stats</h3>
                         <div className="space-y-2 sm:space-y-3">
                             <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#8C3A36]" /> Weight</span><span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.weight?.toFixed(1)} kg</span></div>
-                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" /> Body Fat</span><div className="text-right">{currentStats.bodyFatPercent != null && <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatPercent?.toFixed(1)} %</span>}{currentStats.bodyFatMass != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.bodyFatMass?.toFixed(1)} kg</div>}</div></div>
-                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Dumbbell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" /> Muscle Mass</span><div className="text-right">{currentStats.muscleMass != null && <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.muscleMass?.toFixed(1)} kg</span>}{currentStats.musclePercent != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.musclePercent?.toFixed(1)} %</div>}</div></div>
+                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg">
+                              <span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" /> Body Fat</span>
+                              <div className="text-right">
+                                {currentStats.bodyFatPercent != null ? (
+                                  <>
+                                    <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatPercent?.toFixed(1)}%</span>
+                                    {currentStats.bodyFatMass != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.bodyFatMass?.toFixed(1)} kg</div>}
+                                  </>
+                                ) : currentStats.bodyFatMass != null ? (
+                                  <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatMass?.toFixed(1)} kg</span>
+                                ) : (
+                                  <span className="font-bold text-slate-400 text-sm sm:text-base">N/A</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg">
+                              <span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Dumbbell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" /> Muscle Mass</span>
+                              <div className="text-right">
+                                {currentStats.muscleMass != null ? (
+                                  <>
+                                    <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.muscleMass?.toFixed(1)} kg</span>
+                                    {currentStats.musclePercent != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.musclePercent?.toFixed(1)}%</div>}
+                                  </>
+                                ) : currentStats.musclePercent != null ? (
+                                  <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.musclePercent?.toFixed(1)}%</span>
+                                ) : (
+                                  <span className="font-bold text-slate-400 text-sm sm:text-base">N/A</span>
+                                )}
+                              </div>
+                            </div>
                         </div>
                     </div>
                     <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200"><h3 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Your Goal:</h3><p className="font-semibold text-[#8C3A36] text-base sm:text-lg">{client.goal}</p></div>

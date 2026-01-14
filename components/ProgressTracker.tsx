@@ -171,10 +171,22 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
              <div className="p-2 bg-rose-100 rounded-lg"><Droplet className="w-5 h-5 text-rose-600" /></div>
              <span className="text-slate-500 text-sm font-medium">Body Fat</span>
            </div>
-           <div className="text-3xl font-bold text-slate-900">{fatStats.percent.current.toFixed(1)}%</div>
-           <div className={`text-xs mt-1 font-medium text-slate-500`}>
-             {fatStats.mass.current.toFixed(1)} kg
-           </div>
+           {fatStats.percent.current > 0 ? (
+             <>
+               <div className="text-3xl font-bold text-slate-900">{fatStats.percent.current.toFixed(1)}%</div>
+               {fatStats.mass.current > 0 && (
+                 <div className={`text-xs mt-1 font-medium text-slate-500`}>
+                   {fatStats.mass.current.toFixed(1)} kg
+                 </div>
+               )}
+             </>
+           ) : fatStats.mass.current > 0 ? (
+             <>
+               <div className="text-3xl font-bold text-slate-900">{fatStats.mass.current.toFixed(1)} kg</div>
+             </>
+           ) : (
+             <div className="text-3xl font-bold text-slate-400">N/A</div>
+           )}
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -182,10 +194,22 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
              <div className="p-2 bg-blue-100 rounded-lg"><Dumbbell className="w-5 h-5 text-blue-600" /></div>
              <span className="text-slate-500 text-sm font-medium">Skeletal Muscle</span>
            </div>
-           <div className="text-3xl font-bold text-slate-900">{muscleStats.mass.current.toFixed(1)} kg</div>
-           <div className={`text-xs mt-1 font-medium text-slate-500`}>
-             {muscleStats.percent.current.toFixed(1)}%
-           </div>
+           {muscleStats.mass.current > 0 ? (
+             <>
+               <div className="text-3xl font-bold text-slate-900">{muscleStats.mass.current.toFixed(1)} kg</div>
+               {muscleStats.percent.current > 0 && (
+                 <div className={`text-xs mt-1 font-medium text-slate-500`}>
+                   {muscleStats.percent.current.toFixed(1)}%
+                 </div>
+               )}
+             </>
+           ) : muscleStats.percent.current > 0 ? (
+             <>
+               <div className="text-3xl font-bold text-slate-900">{muscleStats.percent.current.toFixed(1)}%</div>
+             </>
+           ) : (
+             <div className="text-3xl font-bold text-slate-400">N/A</div>
+           )}
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
