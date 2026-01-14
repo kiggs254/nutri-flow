@@ -395,7 +395,20 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
         );
       } else {
         // OpenAI and DeepSeek implementation
-        const openAISystemPrompt = systemInstruction + `\nOutput a JSON object with a single key "plan" containing the array of daily plans.`;
+        const openAISystemPrompt = systemInstruction + `
+
+JSON OUTPUT FORMAT (MANDATORY):
+- Return a single JSON object with a top-level key "plan"
+- "plan" must be an array of 7 items (one per day), where each item has this exact structure:
+  {
+    "day": "Monday",
+    "breakfast": { /* Meal object */ },
+    "lunch": { /* Meal object */ },
+    "dinner": { /* Meal object */ },
+    "snacks": [ /* array of Meal objects */ ]
+  }
+- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
+`;
         
         let imageBase64: string | undefined;
         let mimeType: string | undefined;
@@ -428,16 +441,58 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
         }
       }
 
-      // Parse the response
+      // Parse and normalise the response into DailyPlan[]
       const parsed = JSON.parse(resultText || '{}');
-      if (parsed.plan && Array.isArray(parsed.plan)) {
-        return parsed.plan as DailyPlan[];
+
+      const normaliseEntryToDailyPlan = (entry: any): DailyPlan => {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error('Invalid plan entry format from model.');
+        }
+
+        const anyEntry: any = entry;
+        const day = anyEntry.day ?? 'Day';
+
+        let breakfast = anyEntry.breakfast;
+        let lunch = anyEntry.lunch;
+        let dinner = anyEntry.dinner;
+        let snacks: any[] = Array.isArray(anyEntry.snacks) ? anyEntry.snacks : [];
+
+        // If model used a generic "meals" array instead of breakfast/lunch/dinner
+        const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
+        if (!breakfast && !lunch && !dinner && meals && meals.length) {
+          breakfast = meals[0] ?? null;
+          lunch = meals[1] ?? null;
+          dinner = meals[2] ?? null;
+          const extraSnacks = meals.slice(3);
+          if (extraSnacks.length > 0) {
+            snacks = snacks.concat(extraSnacks);
+          }
+        }
+
+        if (!Array.isArray(snacks)) {
+          snacks = [];
+        }
+
+        return {
+          day,
+          breakfast,
+          lunch,
+          dinner,
+          snacks,
+          totalCalories: anyEntry.totalCalories ?? 0,
+          summary: anyEntry.summary ?? ''
+        } as DailyPlan;
+      };
+
+      if (Array.isArray((parsed as any).plan)) {
+        return (parsed as any).plan.map(normaliseEntryToDailyPlan);
       }
-      // Fallback: if response is already an array
+
       if (Array.isArray(parsed)) {
-        return parsed as DailyPlan[];
+        return (parsed as any).map(normaliseEntryToDailyPlan);
       }
-      throw new Error("Response structure did not match expected schema.");
+
+      throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     } catch (error: any) {
       console.warn(`${provider} generation attempt ${attempt + 1} failed:`, error);
       lastError = error;
