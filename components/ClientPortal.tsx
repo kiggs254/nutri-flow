@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights } from '../services/geminiService';
 import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification } from '../types';
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell } from 'lucide-react';
+import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -627,6 +627,56 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
               <ShortcutCard icon={<CreditCard className="w-5 h-5 sm:w-6 sm:h-6"/>} label="Billing" onClick={() => setActiveTab('billing')} />
             </div>
           
+            {/* Metrics Cards - Matching ClientProfile Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <User className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 uppercase">Age</span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900">{client.age ?? 'N/A'}</div>
+                <div className="text-xs sm:text-sm text-slate-400 mt-1">yrs</div>
+              </div>
+              <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" />
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 uppercase">Weight</span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900">{currentStats.weight?.toFixed(1) ?? 'N/A'}</div>
+                <div className="text-xs sm:text-sm text-slate-400 mt-1">kg</div>
+              </div>
+              <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <Droplet className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500" />
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 uppercase">Body Fat</span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900">
+                  {currentStats.bodyFatPercent != null ? `${currentStats.bodyFatPercent.toFixed(1)}%` : 
+                   currentStats.bodyFatMass != null ? `${currentStats.bodyFatMass.toFixed(1)}` : 'N/A'}
+                </div>
+                <div className="text-xs sm:text-sm text-slate-400 mt-1">
+                  {currentStats.bodyFatPercent != null && currentStats.bodyFatMass != null ? `${currentStats.bodyFatMass.toFixed(1)} kg` :
+                   currentStats.bodyFatPercent != null ? '%' :
+                   currentStats.bodyFatMass != null ? 'kg' : ''}
+                </div>
+              </div>
+              <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 uppercase">Muscle Mass</span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900">
+                  {currentStats.muscleMass != null ? `${currentStats.muscleMass.toFixed(1)}` :
+                   currentStats.musclePercent != null ? `${currentStats.musclePercent.toFixed(1)}%` : 'N/A'}
+                </div>
+                <div className="text-xs sm:text-sm text-slate-400 mt-1">
+                  {currentStats.muscleMass != null && currentStats.musclePercent != null ? `${currentStats.musclePercent.toFixed(1)}%` :
+                   currentStats.muscleMass != null ? 'kg' :
+                   currentStats.musclePercent != null ? '%' : ''}
+                </div>
+              </div>
+            </div>
+
             <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
                 <div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
                     <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
@@ -643,42 +693,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                         <h3 className="font-bold text-base sm:text-lg mb-2 flex items-center gap-2"><Brain className="w-4 h-4 sm:w-5 sm:h-5"/> AI Coach Insights</h3>
                         <div className="min-h-[100px] sm:min-h-[120px] text-xs sm:text-sm opacity-90">{generatingInsight && <div className="flex items-center gap-2"><Loader2 className="animate-spin w-3.5 h-3.5 sm:w-4 sm:h-4" /> Generating...</div>}{insight || "Click for a personalized tip."}</div>
                         <button onClick={handleGenerateInsight} disabled={generatingInsight} className="w-full mt-3 sm:mt-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg py-2 text-sm sm:text-base font-semibold disabled:opacity-50">{generatingInsight ? 'Thinking...' : 'Generate Tip'}</button>
-                    </div>
-                    <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200">
-                        <h3 className="font-bold text-slate-800 mb-3 sm:mb-4 text-sm sm:text-base">Current Stats</h3>
-                        <div className="space-y-2 sm:space-y-3">
-                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg"><span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#8C3A36]" /> Weight</span><span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.weight?.toFixed(1)} kg</span></div>
-                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg">
-                              <span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" /> Body Fat</span>
-                              <div className="text-right">
-                                {currentStats.bodyFatPercent != null ? (
-                                  <>
-                                    <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatPercent?.toFixed(1)}%</span>
-                                    {currentStats.bodyFatMass != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.bodyFatMass?.toFixed(1)} kg</div>}
-                                  </>
-                                ) : currentStats.bodyFatMass != null ? (
-                                  <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.bodyFatMass?.toFixed(1)} kg</span>
-                                ) : (
-                                  <span className="font-bold text-slate-400 text-sm sm:text-base">N/A</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-lg">
-                              <span className="font-medium text-slate-600 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"><Dumbbell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" /> Muscle Mass</span>
-                              <div className="text-right">
-                                {currentStats.muscleMass != null ? (
-                                  <>
-                                    <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.muscleMass?.toFixed(1)} kg</span>
-                                    {currentStats.musclePercent != null && <div className="text-[10px] sm:text-xs text-slate-500 font-medium">{currentStats.musclePercent?.toFixed(1)}%</div>}
-                                  </>
-                                ) : currentStats.musclePercent != null ? (
-                                  <span className="font-bold text-slate-800 text-sm sm:text-base">{currentStats.musclePercent?.toFixed(1)}%</span>
-                                ) : (
-                                  <span className="font-bold text-slate-400 text-sm sm:text-base">N/A</span>
-                                )}
-                              </div>
-                            </div>
-                        </div>
                     </div>
                     <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200"><h3 className="font-bold text-slate-800 mb-2 text-sm sm:text-base">Your Goal:</h3><p className="font-semibold text-[#8C3A36] text-base sm:text-lg">{client.goal}</p></div>
                 </div>
