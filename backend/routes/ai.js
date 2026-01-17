@@ -6,6 +6,23 @@ import { callDeepSeek } from '../services/deepseek.js';
 
 const router = express.Router();
 
+// Get available AI providers (based on configured API keys)
+router.get('/providers', authenticate, (req, res) => {
+  const availableProviders = [];
+  
+  if (process.env.GEMINI_API_KEY) {
+    availableProviders.push('gemini');
+  }
+  if (process.env.OPENAI_API_KEY) {
+    availableProviders.push('openai');
+  }
+  if (process.env.DEEPSEEK_API_KEY) {
+    availableProviders.push('deepseek');
+  }
+  
+  res.json({ providers: availableProviders });
+});
+
 // Helper to convert messages format to Gemini parts format
 function convertMessagesToParts(messages, images) {
   const parts = [];
