@@ -149,7 +149,7 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     
     Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.${
       excludedMeal
-        ? `\n\nIMPORTANT: Do NOT include ${excludedMeal} in any day of the meal plan. Set "${excludedMeal}" to null or omit it entirely.`
+        ? `\n\nIMPORTANT: Do NOT include ${excludedMeal} in any day of the meal plan. ${excludedMeal === 'snacks' ? 'Set "snacks" to an empty array [] for every day.' : `Set "${excludedMeal}" to null or omit it entirely.`}`
         : ''
     }
     
@@ -262,7 +262,7 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
       });
     } else {
       const excludeInstruction = excludedMeal
-        ? `\nIMPORTANT: Do NOT include ${excludedMeal} in the meal plan. Set "${excludedMeal}" to null or omit it entirely.`
+        ? `\nIMPORTANT: Do NOT include ${excludedMeal} in the meal plan. ${excludedMeal === 'snacks' ? 'Set "snacks" to an empty array [] for every day.' : `Set "${excludedMeal}" to null or omit it entirely.`}`
         : '';
 
       const openAISystemPrompt = systemInstruction + `
@@ -275,7 +275,7 @@ JSON OUTPUT FORMAT (MANDATORY):
     "breakfast": ${excludedMeal === 'breakfast' ? 'null' : '{ /* Meal object */ }'},
     "lunch": ${excludedMeal === 'lunch' ? 'null' : '{ /* Meal object */ }'},
     "dinner": ${excludedMeal === 'dinner' ? 'null' : '{ /* Meal object */ }'},
-    "snacks": [ /* array of Meal objects */ ]
+    "snacks": ${excludedMeal === 'snacks' ? '[]' : '[ /* array of Meal objects */ ]'}
   }
 - Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
 - REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
@@ -336,19 +336,24 @@ JSON OUTPUT FORMAT (MANDATORY):
           lunch = meals[0] ?? null;
           dinner = meals[1] ?? null;
           const extraSnacks = meals.slice(2);
-          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
+          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
         } else if (excludedMeal === 'lunch') {
           breakfast = meals[0] ?? null;
           lunch = null;
           dinner = meals[1] ?? null;
           const extraSnacks = meals.slice(2);
-          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
+          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
         } else if (excludedMeal === 'dinner') {
           breakfast = meals[0] ?? null;
           lunch = meals[1] ?? null;
           dinner = null;
           const extraSnacks = meals.slice(3);
-          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
+          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
+        } else if (excludedMeal === 'snacks') {
+          breakfast = meals[0] ?? null;
+          lunch = meals[1] ?? null;
+          dinner = meals[2] ?? null;
+          // Snacks are excluded, so don't add any
         } else {
           breakfast = meals[0] ?? null;
           lunch = meals[1] ?? null;
@@ -360,6 +365,7 @@ JSON OUTPUT FORMAT (MANDATORY):
         if (excludedMeal === 'breakfast') breakfast = null;
         if (excludedMeal === 'lunch') lunch = null;
         if (excludedMeal === 'dinner') dinner = null;
+        if (excludedMeal === 'snacks') snacks = [];
       }
 
       if (!Array.isArray(snacks)) {

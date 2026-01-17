@@ -175,8 +175,9 @@ export interface MealGenParams {
   /**
    * Which main meal to exclude from the generated plan.
    * If set, the model should omit that meal (set it to null) for every day.
+   * For snacks, set the snacks array to empty [].
    */
-  excludeMeal?: 'breakfast' | 'lunch' | 'dinner' | null;
+  excludeMeal?: 'breakfast' | 'lunch' | 'dinner' | 'snacks' | null;
 
   /**
    * @deprecated Use excludeMeal instead (kept for backwards compatibility).

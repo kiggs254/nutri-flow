@@ -491,6 +491,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                 <option value="breakfast">Breakfast</option>
                 <option value="lunch">Lunch</option>
                 <option value="dinner">Dinner</option>
+                <option value="snacks">Snacks</option>
               </select>
               <p className="text-xs text-slate-500 mt-2">
                 The selected meal will be omitted for every day in the plan.
