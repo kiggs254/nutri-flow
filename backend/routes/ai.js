@@ -420,27 +420,42 @@ router.post('/analyze-food-image', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Provider is required' });
     }
 
+    // Validate and default goal parameter
+    const validatedGoal = goal || 'General Health';
+
+    // Validate that mimeType is provided when base64Image is present
+    if (base64Image && !mimeType) {
+      return res.status(400).json({ error: 'mimeType is required when base64Image is provided' });
+    }
+
     let promptText = "";
     if (base64Image && clientNote) {
-      promptText = `Analyze this meal image and the client's note. The client's goal is: ${goal}. Client's note: "${clientNote}". 
+      promptText = `Analyze this meal image and the client's note. The client's goal is: ${validatedGoal}. Client's note: "${clientNote}". 
       1. Based on BOTH the image and note, estimate calories and macros (Protein/Carbs/Fats). 
       2. Is this good for their goal? 
       3. Give 1 constructive suggestion. 
       Keep it under 100 words.`;
     } else if (base64Image) {
-      promptText = `Analyze this meal image. The client's goal is: ${goal}. 
+      promptText = `Analyze this meal image. The client's goal is: ${validatedGoal}. 
       1. Estimate calories and macros (Protein/Carbs/Fats). 
       2. Is this good for their goal? 
       3. Give 1 constructive suggestion. 
       Keep it under 100 words.`;
     } else if (clientNote) {
-      promptText = `Analyze this client's food description. The client's goal is: ${goal}. Client's description: "${clientNote}".
+      promptText = `Analyze this client's food description. The client's goal is: ${validatedGoal}. Client's description: "${clientNote}".
       1. Based on the description, estimate calories and macros (Protein/Carbs/Fats). 
       2. Is this good for their goal? 
       3. Give 1 constructive suggestion. 
       Keep it under 100 words.`;
     } else {
       return res.status(400).json({ error: 'Please provide an image or a description of your meal.' });
+    }
+
+    // DeepSeek doesn't support image inputs - return error if image is provided
+    if (provider === 'deepseek' && base64Image) {
+      return res.status(400).json({ 
+        error: 'DeepSeek does not support image analysis. Please use Gemini or OpenAI for image analysis, or provide a text description instead.' 
+      });
     }
 
     let resultText;
@@ -469,11 +484,12 @@ router.post('/analyze-food-image', authenticate, async (req, res) => {
           temperature: 0.7
         });
       } else {
+        // DeepSeek - text only (image check already done above)
         resultText = await callDeepSeek({
           systemPrompt: "You are an expert nutritionist.",
           userPrompt: promptText,
-          imageBase64: base64Image || undefined,
-          mimeType: mimeType || undefined,
+          imageBase64: undefined,
+          mimeType: undefined,
           jsonMode: false,
           temperature: 0.7
         });
@@ -482,8 +498,17 @@ router.post('/analyze-food-image', authenticate, async (req, res) => {
 
     res.json({ result: resultText || "Could not analyze meal." });
   } catch (error) {
-    console.error('Analyze food image error:', error);
-    res.status(500).json({ error: error.message || 'Failed to analyze food image' });
+    console.error('Analyze food image error:', {
+      message: error.message,
+      stack: error.stack,
+      provider: req.body?.provider,
+      hasImage: !!req.body?.base64Image,
+      hasNote: !!req.body?.clientNote
+    });
+    res.status(500).json({ 
+      error: error.message || 'Failed to analyze food image',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
