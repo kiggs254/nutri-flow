@@ -883,14 +883,22 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   };
 
   const handleAcceptExtraction = () => {
-    // Merge extracted data with current records
+    // Helper function to append text, preserving existing content
+    const appendText = (existing: string, newText: string | undefined): string => {
+      if (!newText || newText.trim() === '') return existing;
+      if (!existing || existing.trim() === '') return newText;
+      // Append with separator if both exist
+      return `${existing.trim()}\n\n${newText.trim()}`;
+    };
+
+    // Merge extracted data with current records, appending instead of overwriting
     setRecordsInfo({
       ...recordsInfo,
-      medicalHistory: extractedData.medicalHistory || recordsInfo.medicalHistory,
-      allergies: extractedData.allergies || recordsInfo.allergies,
-      medications: extractedData.medications || recordsInfo.medications,
-      dietaryHistory: extractedData.dietaryHistory || recordsInfo.dietaryHistory,
-      socialBackground: extractedData.socialBackground || recordsInfo.socialBackground,
+      medicalHistory: appendText(recordsInfo.medicalHistory, extractedData.medicalHistory),
+      allergies: appendText(recordsInfo.allergies, extractedData.allergies),
+      medications: appendText(recordsInfo.medications, extractedData.medications),
+      dietaryHistory: appendText(recordsInfo.dietaryHistory, extractedData.dietaryHistory),
+      socialBackground: appendText(recordsInfo.socialBackground, extractedData.socialBackground),
     });
     setShowExtractionModal(false);
     setExtractedData({});
