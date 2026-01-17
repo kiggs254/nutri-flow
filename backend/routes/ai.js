@@ -598,20 +598,15 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
         let openAIFileId = null;
         
         try {
-          // Handle PDFs using OpenAI Files API
+          // Handle PDFs - send directly in chat completions (Files API doesn't support PDFs with "vision" purpose)
           if (isPDF) {
-            // Convert base64 to Buffer
-            const fileBuffer = Buffer.from(fileContent, 'base64');
-            const fileName = `medical_document_${Date.now()}.pdf`;
-            
-            // Upload to OpenAI Files API
-            openAIFileId = await uploadFileToOpenAI(fileBuffer, fileName, mimeType);
-            
-            // Use file_id in the API call
+            // PDFs can be sent directly to vision models as base64
+            // OpenAI's gpt-4o model supports PDFs directly in chat completions
             resultText = await callOpenAI({
               systemPrompt: systemInstruction,
               userPrompt: prompt,
-              fileId: openAIFileId,
+              imageBase64: fileContent, // Send PDF as base64
+              mimeType: 'application/pdf', // Specify PDF MIME type
               jsonMode: true,
               model: 'gpt-4o',
               temperature: 0.7
