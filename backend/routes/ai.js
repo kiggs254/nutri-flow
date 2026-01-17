@@ -526,6 +526,13 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Provider is required' });
     }
 
+    // DeepSeek doesn't support image inputs - return error if image is provided
+    if (provider === 'deepseek' && isImage) {
+      return res.status(400).json({ 
+        error: 'DeepSeek does not support image analysis. Please use Gemini or OpenAI for image analysis, or provide a text document instead.' 
+      });
+    }
+
     const systemInstruction = `You are a medical records analyst. Extract relevant information from the provided document and return it in a structured JSON format.`;
 
     const prompt = `Analyze this ${isImage ? 'image' : 'document'} and extract the following information if present:
@@ -577,6 +584,7 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
       const fullPrompt = isImage ? prompt : `Document content:\n${fileContent}\n\n${prompt}`;
 
       if (provider === 'openai') {
+        // OpenAI can handle images, PDFs, and other document types
         resultText = await callOpenAI({
           systemPrompt: systemInstruction,
           userPrompt: fullPrompt,
@@ -587,11 +595,12 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
           temperature: 0.7
         });
       } else {
+        // DeepSeek - text only (image check already done above)
         resultText = await callDeepSeek({
           systemPrompt: systemInstruction,
           userPrompt: fullPrompt,
-          imageBase64: isImage ? fileContent : undefined,
-          mimeType: isImage ? mimeType : undefined,
+          imageBase64: undefined,
+          mimeType: undefined,
           jsonMode: true,
           temperature: 0.7
         });

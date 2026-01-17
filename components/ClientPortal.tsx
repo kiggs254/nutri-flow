@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
-import { analyzeFoodImage, generateClientInsights } from '../services/geminiService';
+import { analyzeFoodImage, generateClientInsights, getAIProvider } from '../services/geminiService';
 import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification, Reminder } from '../types';
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
@@ -442,6 +442,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
 
   const handleFoodAnalysis = async () => {
     if ((!foodImage && !foodNote.trim()) || !client) return;
+    
+    // Check if DeepSeek is selected and user is trying to upload an image
+    const provider = getAIProvider();
+    if (provider === 'deepseek' && foodImage) {
+      showToast('DeepSeek does not support image analysis. Please switch to Gemini or OpenAI in Account Settings, or provide a text description instead.', 'error');
+      return;
+    }
+    
     setAnalyzingFood(true);
     setAnalysisResult('');
 

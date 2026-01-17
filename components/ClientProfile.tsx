@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings, Reminder } from '../types';
 import { supabase } from '../services/supabase';
-import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords } from '../services/geminiService';
+import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords, getAIProvider } from '../services/geminiService';
 import { useToast } from '../utils/toast';
 import { ConfirmModal } from '../utils/confirmModal';
 import ReactMarkdown from 'react-markdown';
@@ -651,6 +651,14 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   
   const handleAnalyzeFood = async () => {
     if (!foodImage) return;
+    
+    // Check if DeepSeek is selected - it doesn't support images
+    const provider = getAIProvider();
+    if (provider === 'deepseek') {
+      showToast('DeepSeek does not support image analysis. Please switch to Gemini or OpenAI in Account Settings, or provide a text description instead.', 'error');
+      return;
+    }
+    
     setAnalyzingFood(true);
     setFoodAnalysis("");
 
@@ -670,8 +678,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         };
         reader.readAsDataURL(foodImage);
 
-    } catch(e) {
-        setFoodAnalysis("Failed to analyze image.");
+    } catch(e: any) {
+        setFoodAnalysis("Failed to analyze image: " + (e.message || "Please try again."));
     } finally {
         setAnalyzingFood(false);
     }
@@ -726,14 +734,27 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
 
   const handleFileUpload = async () => {
     if (!fileToUpload) return;
+    
+    const provider = getAIProvider();
+    const fileType = fileToUpload.type;
+    const isImage = fileType.startsWith('image/');
+    
+    // Check if DeepSeek is selected and user is trying to upload an image
+    if (provider === 'deepseek' && isImage) {
+      showToast('DeepSeek does not support image analysis. Please switch to Gemini or OpenAI in Account Settings, or upload a text document instead.', 'error');
+      return;
+    }
+    
     setIsUploading(true);
     setIsAnalyzing(true);
     try {
       // First, analyze the document
-      const fileType = fileToUpload.type;
-      const isImage = fileType.startsWith('image/');
       const isPDF = fileType === 'application/pdf';
       const isText = fileType.startsWith('text/') || fileToUpload.name.endsWith('.txt');
+      const isWordDoc = fileType === 'application/msword' || 
+                       fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                       fileToUpload.name.endsWith('.doc') || 
+                       fileToUpload.name.endsWith('.docx');
       
       let fileContent = '';
       let mimeType = fileType;
@@ -750,12 +771,45 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           reader.readAsDataURL(fileToUpload);
         });
       } else if (isPDF) {
-        // For PDFs, we'll need to extract text
-        // For now, show a message that PDF text extraction requires additional setup
-        showToast('PDF text extraction is not yet fully supported. Please use images or text files, or manually enter the information.', 'warning');
-        setIsUploading(false);
-        setIsAnalyzing(false);
-        return;
+        // For PDFs, only OpenAI supports them natively
+        if (provider === 'openai') {
+          // Convert PDF to base64 for OpenAI vision API
+          const reader = new FileReader();
+          fileContent = await new Promise<string>((resolve, reject) => {
+            reader.onload = (e) => {
+              const result = e.target?.result as string;
+              resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(fileToUpload);
+          });
+          mimeType = 'application/pdf';
+        } else {
+          showToast('PDF analysis is only supported with OpenAI. Please switch to OpenAI in Account Settings or convert the PDF to images/text.', 'warning');
+          setIsUploading(false);
+          setIsAnalyzing(false);
+          return;
+        }
+      } else if (isWordDoc) {
+        // Word documents - only OpenAI supports them
+        if (provider === 'openai') {
+          // Convert to base64 for OpenAI
+          const reader = new FileReader();
+          fileContent = await new Promise<string>((resolve, reject) => {
+            reader.onload = (e) => {
+              const result = e.target?.result as string;
+              resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(fileToUpload);
+          });
+          mimeType = fileType;
+        } else {
+          showToast('Word document analysis is only supported with OpenAI. Please switch to OpenAI in Account Settings or convert to text/PDF.', 'warning');
+          setIsUploading(false);
+          setIsAnalyzing(false);
+          return;
+        }
       } else if (isText) {
         // Read text file content
         fileContent = await new Promise<string>((resolve, reject) => {
@@ -766,14 +820,28 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         });
         mimeType = 'text/plain';
       } else {
-        showToast('Unsupported file type. Please use images (JPG, PNG) or text files (TXT).', 'warning');
-        setIsUploading(false);
-        setIsAnalyzing(false);
-        return;
+        // For other file types, try to process if OpenAI is selected
+        if (provider === 'openai') {
+          // Convert to base64 for OpenAI vision API
+          const reader = new FileReader();
+          fileContent = await new Promise<string>((resolve, reject) => {
+            reader.onload = (e) => {
+              const result = e.target?.result as string;
+              resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(fileToUpload);
+          });
+        } else {
+          showToast('This file type is only supported with OpenAI. Please switch to OpenAI in Account Settings or use images/text files.', 'warning');
+          setIsUploading(false);
+          setIsAnalyzing(false);
+          return;
+        }
       }
       
       // Analyze document with AI
-      const extracted = await analyzeMedicalDocument(fileContent, mimeType, isImage);
+      const extracted = await analyzeMedicalDocument(fileContent, mimeType, isImage || (provider === 'openai' && (isPDF || isWordDoc)));
       setExtractedData(extracted);
       setShowExtractionModal(true);
       setIsAnalyzing(false);
@@ -1231,6 +1299,28 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                     {fileToUpload ? <><FileIcon className="w-5 h-5 sm:w-6 sm:h-6 text-[#8C3A36]" /><span className="text-xs sm:text-sm break-all">{fileToUpload.name}</span></> : <><Upload className="w-5 h-5 sm:w-6 sm:h-6"/><span className="text-xs sm:text-sm">Click to upload file</span></>}
                  </div>
               </div>
+              {(() => {
+                const provider = getAIProvider();
+                if (provider === 'openai') {
+                  return (
+                    <p className="text-xs text-slate-500 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                      <strong>OpenAI selected:</strong> Supports images, PDFs, Word documents, and text files.
+                    </p>
+                  );
+                } else if (provider === 'deepseek') {
+                  return (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      <strong>DeepSeek selected:</strong> Only text files are supported. Images are not supported. Switch to Gemini or OpenAI for image analysis.
+                    </p>
+                  );
+                } else {
+                  return (
+                    <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                      <strong>Gemini selected:</strong> Supports images and text files.
+                    </p>
+                  );
+                }
+              })()}
               {fileToUpload && (
                 <button onClick={handleFileUpload} disabled={isUploading || isAnalyzing} className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
                     {isAnalyzing ? <><Loader2 className="w-4 h-4 animate-spin"/> Analyzing...</> : isUploading ? <><Loader2 className="w-4 h-4 animate-spin"/> Uploading...</> : 'Upload & Analyze Document'}
