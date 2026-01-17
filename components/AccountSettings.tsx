@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { Lock, Save, Loader2, User, AlertTriangle, CheckCircle, Brain, Cpu, Key } from 'lucide-react';
+import { Lock, Save, Loader2, User, AlertTriangle, CheckCircle, Brain, Cpu } from 'lucide-react';
 import { getAIProvider, setAIProvider, AIProvider } from '../services/geminiService';
 
 const AccountSettings: React.FC = () => {
@@ -16,9 +16,8 @@ const AccountSettings: React.FC = () => {
 
     // AI Provider State
     const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
-    const [geminiKey, setGeminiKey] = useState('');
-    const [openAIKey, setOpenAIKey] = useState('');
-    const [deepSeekKey, setDeepSeekKey] = useState('');
+    const [availableProviders, setAvailableProviders] = useState<AIProvider[]>(['gemini']);
+    const [loadingProviders, setLoadingProviders] = useState(true);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -27,13 +26,41 @@ const AccountSettings: React.FC = () => {
             if (user) {
                 setUserEmail(user.email || '');
             }
-            setSelectedProvider(getAIProvider());
-            const storedGeminiKey = localStorage.getItem('nutriflow_gemini_key');
-            const storedOpenAIKey = localStorage.getItem('nutriflow_openai_key');
-            const storedDeepSeekKey = localStorage.getItem('nutriflow_deepseek_key');
-            if (storedGeminiKey) setGeminiKey(storedGeminiKey);
-            if (storedOpenAIKey) setOpenAIKey(storedOpenAIKey);
-            if (storedDeepSeekKey) setDeepSeekKey(storedDeepSeekKey);
+            
+            // Fetch available providers from backend
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.access_token) {
+                    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+                    const response = await fetch(`${backendUrl}/api/ai/providers`, {
+                        headers: {
+                            'Authorization': `Bearer ${session.access_token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const providers = data.providers || ['gemini'];
+                        setAvailableProviders(providers);
+                        
+                        // If current provider is not available, switch to first available
+                        const currentProvider = getAIProvider();
+                        if (!providers.includes(currentProvider)) {
+                            setAIProvider(providers[0] as AIProvider);
+                            setSelectedProvider(providers[0] as AIProvider);
+                        } else {
+                            setSelectedProvider(currentProvider);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch available providers:', error);
+                // Fallback to default
+                setSelectedProvider(getAIProvider());
+            } finally {
+                setLoadingProviders(false);
+            }
+            
             setLoading(false);
         }
         fetchUser();
@@ -42,24 +69,6 @@ const AccountSettings: React.FC = () => {
     const handleProviderChange = (provider: AIProvider) => {
         setSelectedProvider(provider);
         setAIProvider(provider);
-    };
-
-    const handleGeminiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newValue = e.target.value;
-        setGeminiKey(newValue);
-        localStorage.setItem('nutriflow_gemini_key', newValue);
-    };
-
-    const handleOpenAIKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newValue = e.target.value;
-        setOpenAIKey(newValue);
-        localStorage.setItem('nutriflow_openai_key', newValue);
-    };
-
-    const handleDeepSeekKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newValue = e.target.value;
-        setDeepSeekKey(newValue);
-        localStorage.setItem('nutriflow_deepseek_key', newValue);
     };
 
     const handlePasswordUpdate = async (e: React.FormEvent) => {
@@ -111,100 +120,69 @@ const AccountSettings: React.FC = () => {
 
             <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
                 <h2 className="text-base sm:text-lg font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2"><Cpu className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36]" /> AI Preferences</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-                    <div 
-                        onClick={() => handleProviderChange('gemini')}
-                        className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'gemini' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                        <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
-                           <Brain className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'gemini' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'gemini' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>Google Gemini</h3>
-                            <p className="text-xs sm:text-sm text-slate-500">Fast, efficient, and multimodal capabilities. The default provider.</p>
-                        </div>
-                        {selectedProvider === 'gemini' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
+                {loadingProviders ? (
+                    <div className="flex items-center justify-center p-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#8C3A36]" />
                     </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                        {availableProviders.includes('gemini') && (
+                            <div 
+                                onClick={() => handleProviderChange('gemini')}
+                                className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'gemini' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                                <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
+                                   <Brain className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'gemini' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'gemini' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>Google Gemini</h3>
+                                    <p className="text-xs sm:text-sm text-slate-500">Fast, efficient, and multimodal capabilities. The default provider.</p>
+                                </div>
+                                {selectedProvider === 'gemini' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
+                            </div>
+                        )}
 
-                    <div 
-                        onClick={() => handleProviderChange('openai')}
-                        className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'openai' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                        <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
-                           <Cpu className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'openai' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'openai' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>OpenAI (GPT-4)</h3>
-                            <p className="text-xs sm:text-sm text-slate-500">High reasoning capabilities. Good for complex meal plans.</p>
-                        </div>
-                         {selectedProvider === 'openai' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
-                    </div>
+                        {availableProviders.includes('openai') && (
+                            <div 
+                                onClick={() => handleProviderChange('openai')}
+                                className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'openai' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                                <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
+                                   <Cpu className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'openai' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'openai' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>OpenAI (GPT-4)</h3>
+                                    <p className="text-xs sm:text-sm text-slate-500">High reasoning capabilities. Good for complex meal plans.</p>
+                                </div>
+                                 {selectedProvider === 'openai' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
+                            </div>
+                        )}
 
-                    <div 
-                        onClick={() => handleProviderChange('deepseek')}
-                        className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'deepseek' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                        <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
-                           <Brain className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>DeepSeek</h3>
-                            <p className="text-xs sm:text-sm text-slate-500">Cost-effective AI with strong reasoning. Great alternative to OpenAI.</p>
-                        </div>
-                         {selectedProvider === 'deepseek' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
+                        {availableProviders.includes('deepseek') && (
+                            <div 
+                                onClick={() => handleProviderChange('deepseek')}
+                                className={`cursor-pointer p-3 sm:p-4 rounded-xl border-2 transition-all flex items-start gap-2 sm:gap-3 ${selectedProvider === 'deepseek' ? 'border-[#8C3A36] bg-[#F9F5F5]' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                                <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
+                                   <Brain className={`w-5 h-5 sm:w-6 sm:h-6 ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-400'}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'deepseek' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>DeepSeek</h3>
+                                    <p className="text-xs sm:text-sm text-slate-500">Cost-effective AI with strong reasoning. Great alternative to OpenAI.</p>
+                                </div>
+                                 {selectedProvider === 'deepseek' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
+                            </div>
+                        )}
                     </div>
+                )}
+
+                <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-xs sm:text-sm text-blue-800">
+                        <strong>Note:</strong> API keys are managed server-side for enhanced security. 
+                        Your selected provider ({selectedProvider === 'gemini' ? 'Google Gemini' : selectedProvider === 'openai' ? 'OpenAI' : 'DeepSeek'}) 
+                        will be used for all AI requests. Only providers with configured API keys are shown above.
+                    </p>
                 </div>
-
-                {selectedProvider === 'gemini' && (
-                    <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
-                        <label className="block text-xs font-bold text-slate-600 uppercase">Google Gemini API Key</label>
-                        <div className="relative">
-                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="password" 
-                                value={geminiKey}
-                                onChange={handleGeminiKeyChange}
-                                placeholder="AIza..."
-                                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
-                            />
-                        </div>
-                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
-                    </div>
-                )}
-
-                {selectedProvider === 'openai' && (
-                    <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
-                        <label className="block text-xs font-bold text-slate-600 uppercase">OpenAI API Key</label>
-                        <div className="relative">
-                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="password" 
-                                value={openAIKey}
-                                onChange={handleOpenAIKeyChange}
-                                placeholder="sk-..."
-                                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
-                            />
-                        </div>
-                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
-                    </div>
-                )}
-
-                {selectedProvider === 'deepseek' && (
-                    <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 sm:space-y-3">
-                        <label className="block text-xs font-bold text-slate-600 uppercase">DeepSeek API Key</label>
-                        <div className="relative">
-                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="password" 
-                                value={deepSeekKey}
-                                onChange={handleDeepSeekKeyChange}
-                                placeholder="sk-..."
-                                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none"
-                            />
-                        </div>
-                        <p className="text-[10px] sm:text-xs text-slate-500">Your API key is stored locally in your browser and never sent to our servers.</p>
-                    </div>
-                )}
             </div>
 
             <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">

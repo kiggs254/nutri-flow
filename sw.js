@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutriflow-portal-v1';
+const CACHE_NAME = 'nutriflow-portal-v2'; // Updated to clear old cache with API keys
 const urlsToCache = [
   '/',
   '/index.html',
@@ -24,8 +24,12 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // Prevent caching of Supabase API calls to ensure data is always fresh
-  if (event.request.url.includes('supabase.co')) {
+  // Prevent caching of Supabase API calls and backend API calls to ensure data is always fresh
+  if (event.request.url.includes('supabase.co') || 
+      event.request.url.includes('/api/ai/') ||
+      event.request.url.includes('localhost:3000') ||
+      event.request.url.includes('geminiService') ||
+      event.request.url.includes('services/geminiService')) {
     return;
   }
 
@@ -62,18 +66,23 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// Update a service worker
+// Update a service worker - Clear old caches
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          // Delete old cache versions (especially v1 with API keys)
+          if (cacheWhitelist.indexOf(cacheName) === -1 || cacheName === 'nutriflow-portal-v1') {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // Force clients to reload
+      return self.clients.claim();
     })
   );
 });
