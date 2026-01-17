@@ -195,19 +195,6 @@ export async function callOpenAI({
           }
         ]
       });
-    } else if (isPDF) {
-      // PDFs can be sent directly to vision models (gpt-4o) as base64
-      // OpenAI's vision API supports PDFs in the same format as images
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text: userPrompt },
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${imageBase64}` }
-          }
-        ]
-      });
     } else {
       // For other non-image files sent as base64, send as text
       const fullPrompt = `${userPrompt}\n\n[Note: Document file was uploaded but text extraction is required for full analysis. Please analyze based on the provided context.]`;

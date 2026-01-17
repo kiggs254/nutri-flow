@@ -4,6 +4,7 @@ import { callGemini } from '../services/gemini.js';
 import { callOpenAI, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
 import { callDeepSeek } from '../services/deepseek.js';
 import { extractTextFromWordDoc, isWordDocument, isDocxFile } from '../services/wordExtractor.js';
+import { extractTextFromPDF } from '../services/pdfExtractor.js';
 
 const router = express.Router();
 
@@ -598,15 +599,20 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
         let openAIFileId = null;
         
         try {
-          // Handle PDFs - send directly in chat completions (Files API doesn't support PDFs with "vision" purpose)
+          // Handle PDFs by extracting text (OpenAI vision API doesn't accept PDFs directly)
           if (isPDF) {
-            // PDFs can be sent directly to vision models as base64
-            // OpenAI's gpt-4o model supports PDFs directly in chat completions
+            // Convert base64 to Buffer
+            const fileBuffer = Buffer.from(fileContent, 'base64');
+            
+            // Extract text from PDF
+            const extractedText = await extractTextFromPDF(fileBuffer);
+            
+            // Send extracted text as regular text content
+            const fullPrompt = `Document content:\n${extractedText}\n\n${prompt}`;
+            
             resultText = await callOpenAI({
               systemPrompt: systemInstruction,
-              userPrompt: prompt,
-              imageBase64: fileContent, // Send PDF as base64
-              mimeType: 'application/pdf', // Specify PDF MIME type
+              userPrompt: fullPrompt,
               jsonMode: true,
               model: 'gpt-4o',
               temperature: 0.7
