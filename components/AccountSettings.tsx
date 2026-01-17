@@ -175,14 +175,6 @@ const AccountSettings: React.FC = () => {
                         )}
                     </div>
                 )}
-
-                <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs sm:text-sm text-blue-800">
-                        <strong>Note:</strong> API keys are managed server-side for enhanced security. 
-                        Your selected provider ({selectedProvider === 'gemini' ? 'Google Gemini' : selectedProvider === 'openai' ? 'OpenAI' : 'DeepSeek'}) 
-                        will be used for all AI requests. Only providers with configured API keys are shown above.
-                    </p>
-                </div>
             </div>
 
             <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
