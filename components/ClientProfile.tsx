@@ -771,9 +771,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           reader.readAsDataURL(fileToUpload);
         });
       } else if (isPDF) {
-        // For PDFs, only OpenAI supports them natively
+        // PDFs are supported with OpenAI using Files API
         if (provider === 'openai') {
-          // Convert PDF to base64 for OpenAI vision API
+          // Convert PDF to base64 for OpenAI Files API
           const reader = new FileReader();
           fileContent = await new Promise<string>((resolve, reject) => {
             reader.onload = (e) => {
@@ -791,9 +791,20 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           return;
         }
       } else if (isWordDoc) {
-        // Word documents - only OpenAI supports them
+        // Word documents are supported with OpenAI (text extraction)
         if (provider === 'openai') {
-          // Convert to base64 for OpenAI
+          // Check if it's .docx (supported) or .doc (not supported)
+          const isDocx = fileToUpload.name.toLowerCase().endsWith('.docx') || 
+                        fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          
+          if (!isDocx) {
+            showToast('Only .docx files are supported. Please convert .doc files to .docx format or use a text file instead.', 'warning');
+            setIsUploading(false);
+            setIsAnalyzing(false);
+            return;
+          }
+          
+          // Convert Word doc to base64 for backend processing
           const reader = new FileReader();
           fileContent = await new Promise<string>((resolve, reject) => {
             reader.onload = (e) => {
@@ -841,7 +852,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       }
       
       // Analyze document with AI
-      const extracted = await analyzeMedicalDocument(fileContent, mimeType, isImage || (provider === 'openai' && (isPDF || isWordDoc)));
+      // Note: PDFs and Word docs are not images, even if converted to base64
+      // Only actual image files should be marked as isImage
+      const extracted = await analyzeMedicalDocument(fileContent, mimeType, isImage);
       setExtractedData(extracted);
       setShowExtractionModal(true);
       setIsAnalyzing(false);
@@ -1304,7 +1317,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                 if (provider === 'openai') {
                   return (
                     <p className="text-xs text-slate-500 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                      <strong>OpenAI selected:</strong> Supports images, PDFs, Word documents, and text files.
+                      <strong>OpenAI selected:</strong> Supports images, PDFs, Word documents (.docx), and text files.
                     </p>
                   );
                 } else if (provider === 'deepseek') {

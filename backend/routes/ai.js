@@ -1,8 +1,9 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { callGemini } from '../services/gemini.js';
-import { callOpenAI } from '../services/openai.js';
+import { callOpenAI, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
 import { callDeepSeek } from '../services/deepseek.js';
+import { extractTextFromWordDoc, isWordDocument, isDocxFile } from '../services/wordExtractor.js';
 
 const router = express.Router();
 
@@ -581,21 +582,102 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
         temperature: 0.7
       });
     } else {
-      const fullPrompt = isImage ? prompt : `Document content:\n${fileContent}\n\n${prompt}`;
+      // Check if mimeType is actually an image type (OpenAI vision API only supports image types)
+      const isActualImageType = mimeType && (
+        mimeType.startsWith('image/') ||
+        mimeType === 'image/jpeg' ||
+        mimeType === 'image/png' ||
+        mimeType === 'image/gif' ||
+        mimeType === 'image/webp'
+      );
+
+      const isPDF = mimeType === 'application/pdf';
+      const isWordDoc = isWordDocument(mimeType);
 
       if (provider === 'openai') {
-        // OpenAI can handle images, PDFs, and other document types
-        resultText = await callOpenAI({
-          systemPrompt: systemInstruction,
-          userPrompt: fullPrompt,
-          imageBase64: isImage ? fileContent : undefined,
-          mimeType: isImage ? mimeType : undefined,
-          jsonMode: true,
-          model: 'gpt-4o',
-          temperature: 0.7
-        });
+        let openAIFileId = null;
+        
+        try {
+          // Handle PDFs using OpenAI Files API
+          if (isPDF) {
+            // Convert base64 to Buffer
+            const fileBuffer = Buffer.from(fileContent, 'base64');
+            const fileName = `medical_document_${Date.now()}.pdf`;
+            
+            // Upload to OpenAI Files API
+            openAIFileId = await uploadFileToOpenAI(fileBuffer, fileName, mimeType);
+            
+            // Use file_id in the API call
+            resultText = await callOpenAI({
+              systemPrompt: systemInstruction,
+              userPrompt: prompt,
+              fileId: openAIFileId,
+              jsonMode: true,
+              model: 'gpt-4o',
+              temperature: 0.7
+            });
+          }
+          // Handle Word documents by extracting text
+          else if (isWordDoc) {
+            if (!isDocxFile(mimeType)) {
+              return res.status(400).json({ 
+                error: 'Only .docx files are supported. Please convert .doc files to .docx format or use a text file instead.' 
+              });
+            }
+            
+            // Convert base64 to Buffer
+            const fileBuffer = Buffer.from(fileContent, 'base64');
+            
+            // Extract text from Word document
+            const extractedText = await extractTextFromWordDoc(fileBuffer);
+            
+            // Send extracted text as regular text content
+            const fullPrompt = `Document content:\n${extractedText}\n\n${prompt}`;
+            
+            resultText = await callOpenAI({
+              systemPrompt: systemInstruction,
+              userPrompt: fullPrompt,
+              jsonMode: true,
+              model: 'gpt-4o',
+              temperature: 0.7
+            });
+          }
+          // Handle images using vision API
+          else if (isImage && isActualImageType) {
+            resultText = await callOpenAI({
+              systemPrompt: systemInstruction,
+              userPrompt: prompt,
+              imageBase64: fileContent,
+              mimeType: mimeType,
+              jsonMode: true,
+              model: 'gpt-4o',
+              temperature: 0.7
+            });
+          }
+          // Handle text files
+          else {
+            const fullPrompt = `Document content:\n${fileContent}\n\n${prompt}`;
+            resultText = await callOpenAI({
+              systemPrompt: systemInstruction,
+              userPrompt: fullPrompt,
+              jsonMode: true,
+              model: 'gpt-4o',
+              temperature: 0.7
+            });
+          }
+        } finally {
+          // Clean up: delete uploaded file from OpenAI if it was uploaded
+          if (openAIFileId) {
+            await deleteOpenAIFile(openAIFileId).catch(err => {
+              console.warn('Failed to delete OpenAI file:', err);
+            });
+          }
+        }
       } else {
         // DeepSeek - text only (image check already done above)
+        const shouldSendAsImage = isImage && isActualImageType;
+        const fullPrompt = shouldSendAsImage ? prompt : `Document content:\n${fileContent}\n\n${prompt}`;
+        
         resultText = await callDeepSeek({
           systemPrompt: systemInstruction,
           userPrompt: fullPrompt,
