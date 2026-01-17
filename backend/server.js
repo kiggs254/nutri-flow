@@ -10,10 +10,37 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
+// Normalize CORS origin (remove trailing slash for exact match)
+const normalizeOrigin = (origin) => {
+  if (!origin || origin === '*') return origin;
+  return origin.replace(/\/+$/, ''); // Remove trailing slashes
+};
+
+const corsOrigin = CORS_ORIGIN === '*' ? true : normalizeOrigin(CORS_ORIGIN);
+
 // Middleware
 app.use(cors({
-  origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN,
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (corsOrigin === true || corsOrigin === '*') {
+      return callback(null, true);
+    }
+    
+    // Normalize the incoming origin (remove trailing slash)
+    const normalizedIncoming = normalizeOrigin(origin);
+    const normalizedAllowed = normalizeOrigin(corsOrigin);
+    
+    if (normalizedIncoming === normalizedAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '50mb' })); // Support large image payloads
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -51,5 +78,5 @@ if (missingVars.length > 0) {
 app.listen(PORT, () => {
   console.log(`AI Proxy Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`CORS origin: ${CORS_ORIGIN}`);
+  console.log(`CORS origin: ${corsOrigin === true ? '*' : corsOrigin}`);
 });
