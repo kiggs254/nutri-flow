@@ -39,6 +39,12 @@ SUPABASE_ANON_KEY=your_supabase_anon_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
+
+# VAPID Keys for Web Push Notifications (optional)
+# Generate using: npx web-push generate-vapid-keys
+VAPID_PUBLIC_KEY=your_vapid_public_key_here
+VAPID_PRIVATE_KEY=your_vapid_private_key_here
+VAPID_SUBJECT=mailto:admin@nutritherapy.co.ke
 ```
 
 ## Running Locally

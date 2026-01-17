@@ -86,3 +86,98 @@ self.addEventListener('activate', event => {
     })
   );
 });
+
+// Handle push notifications
+self.addEventListener('push', event => {
+  console.log('Push notification received:', event);
+  
+  let notificationData = {
+    title: 'NutriTherapy Solutions',
+    body: 'You have a new notification',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: {}
+  };
+
+  if (event.data) {
+    try {
+      const payload = event.data.json();
+      notificationData = {
+        title: payload.title || notificationData.title,
+        body: payload.body || notificationData.body,
+        icon: payload.icon || notificationData.icon,
+        badge: payload.badge || notificationData.badge,
+        data: payload.data || notificationData.data,
+        tag: payload.tag || undefined, // Group similar notifications
+        requireInteraction: payload.requireInteraction || false,
+        actions: payload.actions || []
+      };
+    } catch (e) {
+      console.error('Error parsing push payload:', e);
+      // Fallback to text if JSON parsing fails
+      notificationData.body = event.data.text() || notificationData.body;
+    }
+  }
+
+  const notificationOptions = {
+    ...notificationData,
+    vibrate: [200, 100, 200],
+    timestamp: Date.now()
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, notificationOptions)
+  );
+});
+
+// Handle notification clicks
+self.addEventListener('notificationclick', event => {
+  console.log('Notification clicked:', event);
+  
+  event.notification.close();
+
+  const notificationData = event.notification.data || {};
+  const action = event.action;
+
+  // Handle action buttons if any
+  if (action) {
+    // Handle specific actions
+    if (action === 'view') {
+      // Open the app to the relevant page
+      event.waitUntil(
+        clients.openWindow(notificationData.url || '/')
+      );
+    } else if (action === 'dismiss') {
+      // Just close the notification
+      return;
+    }
+  } else {
+    // Default click behavior - open the app
+    const urlToOpen = notificationData.url || '/';
+    
+    event.waitUntil(
+      clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+      }).then(clientList => {
+        // Check if there's already a window open
+        for (let i = 0; i < clientList.length; i++) {
+          const client = clientList[i];
+          if (client.url === urlToOpen && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // If no window is open, open a new one
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
+    );
+  }
+});
+
+// Handle notification close (optional - for tracking)
+self.addEventListener('notificationclose', event => {
+  console.log('Notification closed:', event);
+  // Could send analytics or update read status here
+});

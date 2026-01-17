@@ -68,6 +68,175 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
   const [paystackKey, setPaystackKey] = useState<string | null>(null);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
 
+  // Push notification state
+  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+
+  // Get backend URL
+  const getBackendUrl = () => {
+    return import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+  };
+
+  // Get VAPID public key from backend
+  useEffect(() => {
+    const fetchVapidKey = async () => {
+      try {
+        const response = await fetch(`${getBackendUrl()}/api/notifications/vapid-public-key`);
+        if (response.ok) {
+          const data = await response.json();
+          setVapidPublicKey(data.publicKey);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch VAPID key:', error);
+      }
+    };
+    fetchVapidKey();
+  }, []);
+
+  // Check notification permission and existing subscription
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.pushManager.getSubscription().then(subscription => {
+          setPushSubscription(subscription);
+        });
+      });
+    }
+  }, []);
+
+  // Subscribe to push notifications
+  const subscribeToPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      showToast('Push notifications are not supported in this browser', 'error');
+      return;
+    }
+
+    if (!vapidPublicKey) {
+      showToast('Push notifications are not configured', 'error');
+      return;
+    }
+
+    setIsSubscribing(true);
+
+    try {
+      // Request notification permission
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+
+      if (permission !== 'granted') {
+        showToast('Notification permission denied', 'error');
+        setIsSubscribing(false);
+        return;
+      }
+
+      // Get service worker registration
+      const registration = await navigator.serviceWorker.ready;
+
+      // Subscribe to push
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+      });
+
+      setPushSubscription(subscription);
+
+      // Send subscription to backend
+      const subscriptionData = {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: arrayBufferToBase64(subscription.getKey('p256dh')!),
+          auth: arrayBufferToBase64(subscription.getKey('auth')!)
+        }
+      };
+
+      const response = await fetch(`${getBackendUrl()}/api/notifications/subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Portal-Token': portalToken
+        },
+        body: JSON.stringify({ subscription: subscriptionData })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save subscription');
+      }
+
+      showToast('Push notifications enabled', 'success');
+    } catch (error: any) {
+      console.error('Error subscribing to push:', error);
+      showToast(error.message || 'Failed to enable push notifications', 'error');
+      setPushSubscription(null);
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  // Unsubscribe from push notifications
+  const unsubscribeFromPush = async () => {
+    if (!pushSubscription) return;
+
+    setIsSubscribing(true);
+
+    try {
+      // Unsubscribe from push service
+      await pushSubscription.unsubscribe();
+
+      // Remove from backend
+      const response = await fetch(`${getBackendUrl()}/api/notifications/unsubscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Portal-Token': portalToken
+        },
+        body: JSON.stringify({ endpoint: pushSubscription.endpoint })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove subscription');
+      }
+
+      setPushSubscription(null);
+      showToast('Push notifications disabled', 'success');
+    } catch (error: any) {
+      console.error('Error unsubscribing from push:', error);
+      showToast(error.message || 'Failed to disable push notifications', 'error');
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  // Helper functions for base64 conversion
+  const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  };
+
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -1102,6 +1271,33 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                             </div>
                         )) : <p className="p-4 text-xs text-slate-500">No new notifications.</p>}
                         </div>
+                        <div className="border-t p-3 bg-slate-50">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                    <p className="text-xs font-semibold text-slate-800">Push Notifications</p>
+                                    <p className="text-[10px] text-slate-500 mt-0.5">
+                                        {pushSubscription ? 'Enabled' : notificationPermission === 'denied' ? 'Blocked' : 'Disabled'}
+                                    </p>
+                                </div>
+                                {pushSubscription ? (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); unsubscribeFromPush(); }}
+                                        disabled={isSubscribing}
+                                        className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-[10px] font-medium hover:bg-slate-300 disabled:opacity-50"
+                                    >
+                                        {isSubscribing ? '...' : 'Disable'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); subscribeToPush(); }}
+                                        disabled={isSubscribing || !vapidPublicKey || notificationPermission === 'denied'}
+                                        className="px-3 py-1.5 bg-[#8C3A36] text-white rounded text-[10px] font-medium hover:bg-[#7a2f2b] disabled:opacity-50"
+                                    >
+                                        {isSubscribing ? '...' : 'Enable'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                     )}
                 </div>
@@ -1139,6 +1335,33 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                                <p className="text-xs text-slate-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
                             </div>
                         )) : <p className="p-4 text-sm text-slate-500">No new notifications.</p>}
+                        </div>
+                        <div className="border-t p-3 bg-slate-50">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                    <p className="text-sm font-semibold text-slate-800">Push Notifications</p>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        {pushSubscription ? 'Enabled' : notificationPermission === 'denied' ? 'Blocked' : 'Disabled'}
+                                    </p>
+                                </div>
+                                {pushSubscription ? (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); unsubscribeFromPush(); }}
+                                        disabled={isSubscribing}
+                                        className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-xs font-medium hover:bg-slate-300 disabled:opacity-50"
+                                    >
+                                        {isSubscribing ? '...' : 'Disable'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); subscribeToPush(); }}
+                                        disabled={isSubscribing || !vapidPublicKey || notificationPermission === 'denied'}
+                                        className="px-3 py-1.5 bg-[#8C3A36] text-white rounded text-xs font-medium hover:bg-[#7a2f2b] disabled:opacity-50"
+                                    >
+                                        {isSubscribing ? '...' : 'Enable'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                     )}
