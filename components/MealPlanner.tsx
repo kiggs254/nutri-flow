@@ -109,7 +109,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         dietaryHistory: selectedClient.dietaryHistory || '',
         socialBackground: selectedClient.socialBackground || '',
         customInstructions: '',
-        excludeMeal: null,
+        excludeMeals: [],
       });
       fetchSavedPlans(selectedClient.id);
       setPlan(null);
@@ -480,21 +480,29 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
             <EditableField label="Custom Instructions (for this plan only)" value={params.customInstructions || ''} onChange={v => handleParamChange('customInstructions', v)} type="textarea" />
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-wider">
-                Exclude a meal (optional)
+                Exclude meals (optional)
               </label>
-              <select
-                value={params.excludeMeal || ''}
-                onChange={(e) => handleParamChange('excludeMeal', e.target.value ? e.target.value : null)}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-sm focus:ring-[#8C3A36] focus:border-[#8C3A36]"
-              >
-                <option value="">Do not exclude</option>
-                <option value="breakfast">Breakfast</option>
-                <option value="lunch">Lunch</option>
-                <option value="dinner">Dinner</option>
-                <option value="snacks">Snacks</option>
-              </select>
+              <div className="space-y-2">
+                {['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (
+                  <label key={meal} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(params.excludeMeals || []).includes(meal as any)}
+                      onChange={(e) => {
+                        const currentExcludes = params.excludeMeals || [];
+                        const newExcludes = e.target.checked
+                          ? [...currentExcludes, meal as any]
+                          : currentExcludes.filter((m) => m !== meal);
+                        handleParamChange('excludeMeals', newExcludes);
+                      }}
+                      className="w-4 h-4 text-[#8C3A36] border-slate-300 rounded focus:ring-[#8C3A36] focus:ring-2"
+                    />
+                    <span className="text-sm text-slate-700 capitalize">{meal}</span>
+                  </label>
+                ))}
+              </div>
               <p className="text-xs text-slate-500 mt-2">
-                The selected meal will be omitted for every day in the plan.
+                Selected meals will be omitted for every day in the plan.
               </p>
             </div>
             <div>

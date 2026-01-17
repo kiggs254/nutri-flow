@@ -72,7 +72,15 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Provider is required' });
     }
 
-    const excludedMeal = params.excludeMeal ?? (params.excludeLunch ? 'lunch' : null);
+    // Support both new excludeMeals array and legacy excludeMeal/excludeLunch for backward compatibility
+    let excludedMeals = [];
+    if (Array.isArray(params.excludeMeals) && params.excludeMeals.length > 0) {
+      excludedMeals = params.excludeMeals;
+    } else if (params.excludeMeal) {
+      excludedMeals = [params.excludeMeal];
+    } else if (params.excludeLunch) {
+      excludedMeals = ['lunch'];
+    }
 
     const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
   CRITICAL RULES:
@@ -148,8 +156,8 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     ${params.referenceData ? "An image has been attached as reference material." : ""}
     
     Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.${
-      excludedMeal
-        ? `\n\nIMPORTANT: Do NOT include ${excludedMeal} in any day of the meal plan. ${excludedMeal === 'snacks' ? 'Set "snacks" to an empty array [] for every day.' : `Set "${excludedMeal}" to null or omit it entirely.`}`
+      excludedMeals.length > 0
+        ? `\n\nIMPORTANT: Do NOT include the following meals in any day of the meal plan: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to an empty array [] for every day.' : ''}${excludedMeals.filter(m => m !== 'snacks').length > 0 ? ` Set ${excludedMeals.filter(m => m !== 'snacks').map(m => `"${m}"`).join(', ')} to null or omit ${excludedMeals.filter(m => m !== 'snacks').length === 1 ? 'it' : 'them'} entirely.` : ''}`
         : ''
     }
     
@@ -261,8 +269,8 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
         maxOutputTokens: 8192
       });
     } else {
-      const excludeInstruction = excludedMeal
-        ? `\nIMPORTANT: Do NOT include ${excludedMeal} in the meal plan. ${excludedMeal === 'snacks' ? 'Set "snacks" to an empty array [] for every day.' : `Set "${excludedMeal}" to null or omit it entirely.`}`
+      const excludeInstruction = excludedMeals.length > 0
+        ? `\nIMPORTANT: Do NOT include the following meals in the meal plan: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to an empty array [] for every day.' : ''}${excludedMeals.filter(m => m !== 'snacks').length > 0 ? ` Set ${excludedMeals.filter(m => m !== 'snacks').map(m => `"${m}"`).join(', ')} to null or omit ${excludedMeals.filter(m => m !== 'snacks').length === 1 ? 'it' : 'them'} entirely.` : ''}`
         : '';
 
       const openAISystemPrompt = systemInstruction + `
@@ -272,10 +280,10 @@ JSON OUTPUT FORMAT (MANDATORY):
 - "plan" must be an array of 7 items (one per day), where each item has this exact structure:
   {
     "day": "Monday",
-    "breakfast": ${excludedMeal === 'breakfast' ? 'null' : '{ /* Meal object */ }'},
-    "lunch": ${excludedMeal === 'lunch' ? 'null' : '{ /* Meal object */ }'},
-    "dinner": ${excludedMeal === 'dinner' ? 'null' : '{ /* Meal object */ }'},
-    "snacks": ${excludedMeal === 'snacks' ? '[]' : '[ /* array of Meal objects */ ]'}
+    "breakfast": ${excludedMeals.includes('breakfast') ? 'null' : '{ /* Meal object */ }'},
+    "lunch": ${excludedMeals.includes('lunch') ? 'null' : '{ /* Meal object */ }'},
+    "dinner": ${excludedMeals.includes('dinner') ? 'null' : '{ /* Meal object */ }'},
+    "snacks": ${excludedMeals.includes('snacks') ? '[]' : '[ /* array of Meal objects */ ]'}
   }
 - Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
 - REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
@@ -331,41 +339,37 @@ JSON OUTPUT FORMAT (MANDATORY):
       // If model used a generic "meals" array instead of breakfast/lunch/dinner
       const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
       if (!breakfast && !lunch && !dinner && meals && meals.length) {
-        if (excludedMeal === 'breakfast') {
-          breakfast = null;
-          lunch = meals[0] ?? null;
-          dinner = meals[1] ?? null;
-          const extraSnacks = meals.slice(2);
-          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
-        } else if (excludedMeal === 'lunch') {
-          breakfast = meals[0] ?? null;
-          lunch = null;
-          dinner = meals[1] ?? null;
-          const extraSnacks = meals.slice(2);
-          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
-        } else if (excludedMeal === 'dinner') {
-          breakfast = meals[0] ?? null;
-          lunch = meals[1] ?? null;
-          dinner = null;
-          const extraSnacks = meals.slice(3);
-          if (extraSnacks.length > 0 && excludedMeal !== 'snacks') snacks = snacks.concat(extraSnacks);
-        } else if (excludedMeal === 'snacks') {
-          breakfast = meals[0] ?? null;
-          lunch = meals[1] ?? null;
-          dinner = meals[2] ?? null;
-          // Snacks are excluded, so don't add any
+        // Assign meals based on what's excluded
+        let mealIndex = 0;
+        if (!excludedMeals.includes('breakfast')) {
+          breakfast = meals[mealIndex] ?? null;
+          mealIndex++;
         } else {
-          breakfast = meals[0] ?? null;
-          lunch = meals[1] ?? null;
-          dinner = meals[2] ?? null;
-          const extraSnacks = meals.slice(3);
+          breakfast = null;
+        }
+        if (!excludedMeals.includes('lunch')) {
+          lunch = meals[mealIndex] ?? null;
+          mealIndex++;
+        } else {
+          lunch = null;
+        }
+        if (!excludedMeals.includes('dinner')) {
+          dinner = meals[mealIndex] ?? null;
+          mealIndex++;
+        } else {
+          dinner = null;
+        }
+        // Add remaining meals as snacks if snacks are not excluded
+        if (!excludedMeals.includes('snacks')) {
+          const extraSnacks = meals.slice(mealIndex);
           if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
         }
-      } else if (excludedMeal) {
-        if (excludedMeal === 'breakfast') breakfast = null;
-        if (excludedMeal === 'lunch') lunch = null;
-        if (excludedMeal === 'dinner') dinner = null;
-        if (excludedMeal === 'snacks') snacks = [];
+      } else {
+        // Apply exclusions to individual meal fields
+        if (excludedMeals.includes('breakfast')) breakfast = null;
+        if (excludedMeals.includes('lunch')) lunch = null;
+        if (excludedMeals.includes('dinner')) dinner = null;
+        if (excludedMeals.includes('snacks')) snacks = [];
       }
 
       if (!Array.isArray(snacks)) {
