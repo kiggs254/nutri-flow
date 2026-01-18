@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights, getAIProvider } from '../services/geminiService';
-import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification, Reminder } from '../types';
+import { Client, DailyPlan, FoodLog, Invoice, ProgressLog, SavedMealPlan, Meal, Appointment, Message, Notification as AppNotification, Reminder } from '../types';
 import { BarChart, Bar, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Loader2, Brain, BarChart3, TrendingUp, Utensils, FileText, Camera, CheckCircle, AlertTriangle, BadgePercent, ChevronDown, ChevronUp, Calendar, MessageSquare, Send, CreditCard, X, Dumbbell, Droplet, Bell, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -54,7 +54,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -458,7 +458,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
           });
           
           if (newMessage.sender === 'nutritionist') {
-             const newNotification: Notification = { 
+             const newNotification: AppNotification = { 
                 id: newMessage.id, 
                 clientId: newMessage.clientId, 
                 clientName: 'Your Nutritionist', 
@@ -489,7 +489,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         { event: 'INSERT', schema: 'public', table: 'invoices', filter: `client_id=eq.${clientId}` },
         (payload) => {
           const newInvoice = payload.new as Invoice;
-          const newNotification: Notification = {
+          const newNotification: AppNotification = {
             id: newInvoice.id,
             clientId: newInvoice.clientId,
             clientName: 'Your Nutritionist',
@@ -507,7 +507,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
         { event: 'INSERT', schema: 'public', table: 'meal_plans', filter: `client_id=eq.${clientId}` },
         (payload) => {
           const newPlan = payload.new as SavedMealPlan;
-          const newNotification: Notification = {
+          const newNotification: AppNotification = {
             id: newPlan.id,
             clientId: newPlan.clientId,
             clientName: 'Your Nutritionist',
@@ -557,7 +557,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
     };
   }, [client?.id]);
 
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = (notification: AppNotification) => {
     setShowNotifications(false);
     switch (notification.type) {
         case 'message':
