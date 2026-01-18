@@ -23,7 +23,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               <a href="#workflow" className="text-slate-600 hover:text-[#8C3A36] text-sm font-medium transition-colors">Workflow</a>
               <a href="#pricing" className="text-slate-600 hover:text-[#8C3A36] text-sm font-medium transition-colors">Pricing</a>
               <a href="#testimonials" className="text-slate-600 hover:text-[#8C3A36] text-sm font-medium transition-colors">Testimonials</a>
-              <a href="#/articles" className="text-slate-600 hover:text-[#8C3A36] text-sm font-medium transition-colors">Articles</a>
             </div>
              <div className="hidden md:flex items-center space-x-4">
               <button onClick={onLogin} className="text-slate-900 hover:text-[#8C3A36] text-sm font-medium">Log In</button>
@@ -70,13 +69,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 className="block text-slate-600 hover:text-[#8C3A36] text-base font-medium transition-colors py-2"
               >
                 Testimonials
-              </a>
-              <a 
-                href="#/articles" 
-                onClick={() => setMobileMenuOpen(false)}
-                className="block text-slate-600 hover:text-[#8C3A36] text-base font-medium transition-colors py-2"
-              >
-                Articles
               </a>
               <div className="pt-4 border-t border-slate-200 space-y-3">
                 <button 
