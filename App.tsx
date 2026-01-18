@@ -4,6 +4,8 @@ import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 // FIX: Changed to named import for ClientPortal.
 import { ClientPortal } from './components/ClientPortal';
+import ArticlesLanding from './components/ArticlesLanding';
+import ArticleDetail from './components/ArticleDetail';
 import { supabase } from './services/supabase';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './utils/toast';
@@ -93,6 +95,32 @@ const App: React.FC = () => {
         </ToastProvider>
       );
     }
+  }
+
+  // Handle articles routes
+  const routePath = path.substring(1); // remove '#'
+  if (routePath.startsWith('/articles/')) {
+    const articleId = routePath.substring(10); // length of '/articles/'
+    if (articleId) {
+      return (
+        <ToastProvider>
+          <ArticleDetail 
+            articleId={articleId}
+            onBack={() => { window.location.hash = '/articles'; }}
+            onLogin={() => setShowAuthModal(true)}
+          />
+        </ToastProvider>
+      );
+    }
+  }
+
+  if (routePath === '/articles') {
+    return (
+      <ToastProvider>
+        <ArticlesLanding onLogin={() => setShowAuthModal(true)} />
+        <Auth isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      </ToastProvider>
+    );
   }
 
   return (

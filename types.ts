@@ -203,3 +203,18 @@ export interface BillingSettings {
   currency: 'USD' | 'KES' | 'NGN' | 'GHS';
   paystack_public_key: string;
 }
+
+export interface Article {
+  id: string;
+  title: string;
+  content: string;
+  excerpt?: string;
+  author?: string;
+  imageUrl?: string;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt?: string;
+  category?: string;
+  tags?: string[];
+  isPublished: boolean;
+}
