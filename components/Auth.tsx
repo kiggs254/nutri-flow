@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { X, Mail, Lock, Loader2, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -8,12 +8,30 @@ interface AuthProps {
 }
 
 const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
-  const [view, setView] = useState<'login' | 'signup' | 'forgot'>('login');
+  const [view, setView] = useState<'login' | 'signup' | 'forgot' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Check for reset token in URL when component mounts or opens
+  useEffect(() => {
+    if (isOpen) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      const type = urlParams.get('type');
+      
+      if (token && type === 'recovery') {
+        setResetToken(token);
+        setView('reset');
+        // Clean up URL
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }, [isOpen]);
 
   // Backend URL helper (mirrors logic in geminiService)
   const getBackendUrl = (): string => {
@@ -33,6 +51,8 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     setError(null);
     setSuccessMsg(null);
     setPassword('');
+    setConfirmPassword('');
+    setResetToken(null);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -115,6 +135,61 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
       setLoading(false);
     }
   };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    resetState();
+
+    if (!resetToken) {
+      setError('Reset token is missing. Please request a new password reset link.');
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Verify the recovery token and update password
+      // Supabase's verifyOtp with recovery type will create a session
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        token_hash: resetToken,
+        type: 'recovery',
+      });
+
+      if (verifyError) {
+        throw verifyError;
+      }
+
+      // Now update the password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');
+      setView('login');
+      setPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset password. The link may have expired. Please request a new one.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -124,8 +199,8 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
           <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
           <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-black/10 rounded-full blur-2xl" />
           <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-          <h2 className="text-2xl font-bold mb-2">{view === 'login' ? 'Welcome Back' : view === 'signup' ? 'Create Account' : 'Reset Password'}</h2>
-          <p className="text-stone-100 text-sm">{view === 'login' ? 'Sign in to manage your nutrition practice.' : view === 'signup' ? 'Start your 14-day free trial today.' : 'Enter your email to receive a password reset link.'}</p>
+          <h2 className="text-2xl font-bold mb-2">{view === 'login' ? 'Welcome Back' : view === 'signup' ? 'Create Account' : view === 'forgot' ? 'Reset Password' : 'Set New Password'}</h2>
+          <p className="text-stone-100 text-sm">{view === 'login' ? 'Sign in to manage your nutrition practice.' : view === 'signup' ? 'Start your 14-day free trial today.' : view === 'forgot' ? 'Enter your email to receive a password reset link.' : 'Enter your new password below.'}</p>
         </div>
         <div className="p-8">
             {error && <div className="p-4 mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex gap-3 items-start"><AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" /><div>{error}</div></div>}
@@ -142,6 +217,26 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
                   </div>
                   <button type="submit" disabled={loading} className="w-full bg-[#8C3A36] text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Link'}
+                  </button>
+              </form>
+            ) : view === 'reset' ? (
+              <form onSubmit={handlePasswordReset} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">New Password</label>
+                    <div className="relative">
+                      <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl" placeholder="••••••••" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Confirm Password</label>
+                    <div className="relative">
+                      <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl" placeholder="••••••••" />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading} className="w-full bg-[#8C3A36] text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Reset Password'}
                   </button>
               </form>
             ) : (
@@ -175,6 +270,7 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
                 {view === 'login' && (<>Don't have an account? <button onClick={() => { setView('signup'); resetState(); }} className="text-[#8C3A36] font-semibold hover:underline">Sign up</button></>)}
                 {view === 'signup' && (<>Already have an account? <button onClick={() => { setView('login'); resetState(); }} className="text-[#8C3A36] font-semibold hover:underline">Log in</button></>)}
                 {view === 'forgot' && (<>Remember your password? <button onClick={() => { setView('login'); resetState(); }} className="text-[#8C3A36] font-semibold hover:underline">Back to Login</button></>)}
+                {view === 'reset' && (<>Remember your password? <button onClick={() => { setView('login'); resetState(); }} className="text-[#8C3A36] font-semibold hover:underline">Back to Login</button></>)}
             </div>
         </div>
       </div>

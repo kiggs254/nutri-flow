@@ -95,6 +95,28 @@ const App: React.FC = () => {
     }
   }
 
+  // Check for password reset token in URL (check both query params and hash)
+  useEffect(() => {
+    // Check query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    let token = urlParams.get('token');
+    let type = urlParams.get('type');
+    
+    // Also check hash for token (in case it's in the hash)
+    if (!token && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+      token = hashParams.get('token');
+      type = hashParams.get('type');
+    }
+    
+    if (token && type === 'recovery') {
+      // Open auth modal in reset password mode
+      setShowAuthModal(true);
+      // Clean up URL
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
   return (
     <ToastProvider>
       {session ? (
