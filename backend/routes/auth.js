@@ -134,12 +134,17 @@ router.post('/reset-password', async (req, res) => {
   try {
     const { email } = req.body;
 
+    console.log('[AUTH] /api/auth/reset-password called');
     if (!email) {
+      console.warn('[AUTH] Reset password request missing email');
       return res.status(400).json({ error: 'Email is required' });
     }
 
+    console.log('[AUTH] Reset password requested for:', email);
+
     if (!isEmailServiceConfigured()) {
-      return res.status(503).json({ error: 'Email service not configured' });
+      console.error('[AUTH] Email service not configured (SMTP missing)');
+      return res.status(503).json({ error: 'Email service not configured on backend' });
     }
 
     // We intentionally do NOT call supabase.auth.resetPasswordForEmail here,
@@ -149,11 +154,9 @@ router.post('/reset-password', async (req, res) => {
     // 2) Send the email ourselves via nodemailer.
 
     if (!supabaseAdmin) {
-      console.error('SUPABASE_SERVICE_ROLE_KEY is not configured; cannot generate recovery link');
-      // Still return success to avoid email enumeration
-      return res.json({
-        success: true,
-        message: 'If an account exists with this email, a password reset link has been sent.',
+      console.error('[AUTH] SUPABASE_SERVICE_ROLE_KEY is not configured; cannot generate recovery link');
+      return res.status(500).json({
+        error: 'Backend is missing SUPABASE_SERVICE_ROLE_KEY. Cannot generate password reset link.',
       });
     }
 
@@ -170,42 +173,44 @@ router.post('/reset-password', async (req, res) => {
       });
 
       if (linkError) {
-        console.error('Error from Supabase when generating reset link:', linkError);
+        console.error('[AUTH] Error from Supabase when generating reset link:', linkError);
       } else if (linkData?.properties?.action_link) {
         resetLink = linkData.properties.action_link;
+        console.log('[AUTH] Successfully generated Supabase recovery link');
+      } else {
+        console.error('[AUTH] Supabase generateLink returned no action_link');
       }
     } catch (adminError) {
-      console.error('Exception while generating reset link:', adminError);
+      console.error('[AUTH] Exception while generating reset link:', adminError);
     }
 
     // If we still don't have a link, just return generic success
     if (!resetLink) {
-      console.error('Failed to generate password reset link; returning generic success');
-      return res.json({
-        success: true,
-        message: 'If an account exists with this email, a password reset link has been sent.',
+      console.error('[AUTH] Failed to generate password reset link; not sending email');
+      return res.status(500).json({
+        error: 'Failed to generate password reset link. Please contact support or try again later.',
       });
     }
 
     // Send our custom password reset email
     try {
       await sendPasswordResetEmail(email, resetLink);
+      console.log('[AUTH] Password reset email dispatched via emailService');
     } catch (emailError) {
-      console.error('Error sending reset email:', emailError);
-      // Do not leak details to client; still return success
+      console.error('[AUTH] Error sending reset email:', emailError);
+      return res.status(500).json({
+        error: 'Failed to send password reset email. Please try again later.',
+      });
     }
 
-    // Always return success to prevent email enumeration
     res.json({
       success: true,
       message: 'If an account exists with this email, a password reset link has been sent.',
     });
   } catch (error) {
-    console.error('Password reset error:', error);
-    // Still return success to prevent email enumeration
-    res.json({
-      success: true,
-      message: 'If an account exists with this email, a password reset link has been sent.',
+    console.error('[AUTH] Password reset error (unhandled):', error);
+    res.status(500).json({
+      error: 'Unexpected error while processing password reset. Please try again later.',
     });
   }
 });
