@@ -40,10 +40,10 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
       if (token && type === 'recovery') {
         setResetToken(token);
         setView('reset');
-        // Clean up URL - remove query params
-        const url = new URL(window.location.href);
-        url.search = '';
-        window.history.replaceState(null, '', url.pathname + url.hash);
+        // Clean up URL - remove query params using relative path
+        const pathname = window.location.pathname || '/';
+        const hash = window.location.hash || '';
+        window.history.replaceState(null, '', pathname + hash);
       }
     }
   }, [isOpen]);
