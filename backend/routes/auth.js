@@ -415,14 +415,59 @@ router.post('/reset-password-with-token', async (req, res) => {
       });
 
       if (updateError) {
-        console.error('[AUTH] Password update failed:', updateError);
+        console.error('[AUTH] Session-based password update failed:', updateError);
         console.error('[AUTH] Update error details:', JSON.stringify(updateError, null, 2));
-        return res.status(500).json({ 
-          error: 'Failed to update password: ' + (updateError.message || 'Unknown error') 
-        });
+        
+        // Fallback: Try admin API directly
+        console.log('[AUTH] Attempting admin API fallback for password update...');
+        const { data: adminUpdateData, error: adminUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { password: password }
+        );
+
+        if (adminUpdateError) {
+          console.error('[AUTH] Admin API password update also failed:', adminUpdateError);
+          console.error('[AUTH] Admin API error details:', JSON.stringify(adminUpdateError, null, 2));
+          
+          // Last resort: Try direct REST API call
+          console.log('[AUTH] Attempting direct REST API call as last resort...');
+          try {
+            const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                'apikey': supabaseServiceRoleKey,
+              },
+              body: JSON.stringify({
+                password: password,
+              }),
+            });
+
+            const responseData = await response.json();
+
+            if (!response.ok) {
+              console.error('[AUTH] Direct REST API call failed:', responseData);
+              return res.status(500).json({ 
+                error: 'Failed to update password: ' + (responseData.error?.message || responseData.message || 'All update methods failed') 
+              });
+            }
+
+            console.log('[AUTH] Password updated successfully via direct REST API');
+          } catch (restError) {
+            console.error('[AUTH] Direct REST API call exception:', restError);
+            return res.status(500).json({ 
+              error: 'Failed to update password: All methods failed. ' + (updateError.message || 'Unknown error') 
+            });
+          }
+        } else {
+          console.log('[AUTH] Password updated successfully via admin API fallback');
+        }
+      } else {
+        console.log('[AUTH] Password updated successfully via session-based update');
       }
 
-      console.log('[AUTH] Password updated successfully for user:', userEmail || userId);
+      console.log('[AUTH] Password update completed for user:', userEmail || userId);
       
       // Send confirmation email
       if (userEmail && isEmailServiceConfigured()) {

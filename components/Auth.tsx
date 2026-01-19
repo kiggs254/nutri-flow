@@ -194,13 +194,41 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
         throw new Error('Failed to establish session: ' + sessionError.message);
       }
 
-      // Step 3: Update password using the authenticated session
-      const { error: updateError } = await supabase.auth.updateUser({
+      // Step 3: Try to update password using the authenticated session
+      let updateError = null;
+      const { error: clientUpdateError } = await supabase.auth.updateUser({
         password: password,
       });
 
-      if (updateError) {
-        throw new Error('Failed to update password: ' + updateError.message);
+      if (clientUpdateError) {
+        console.warn('[AUTH] Client-side password update failed, trying backend fallback:', clientUpdateError);
+        updateError = clientUpdateError;
+        
+        // Fallback: Use backend endpoint with admin API
+        try {
+          const backendResponse = await fetch(`${backendUrl}/api/auth/reset-password-with-token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              token: resetToken,
+              password: password,
+            }),
+          });
+
+          const backendData = await backendResponse.json().catch(() => ({}));
+
+          if (!backendResponse.ok) {
+            throw new Error(backendData.error || 'Backend password update failed');
+          }
+
+          // Backend update succeeded
+          console.log('[AUTH] Password updated successfully via backend fallback');
+        } catch (backendError: any) {
+          // Both methods failed
+          throw new Error('Failed to update password: ' + (backendError.message || updateError.message || 'Unknown error'));
+        }
       }
 
       setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');
