@@ -160,24 +160,25 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     }
 
     try {
-      // Verify the recovery token and update password
-      // Supabase's verifyOtp with recovery type will create a session
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        token_hash: resetToken,
-        type: 'recovery',
+      // Use backend endpoint to securely handle password reset with service role
+      const backendUrl = getBackendUrl();
+      
+      const response = await fetch(`${backendUrl}/api/auth/reset-password-with-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: resetToken,
+          password: password,
+        }),
       });
 
-      if (verifyError) {
-        throw verifyError;
-      }
+      const data = await response.json().catch(() => ({}));
 
-      // Now update the password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password,
-      });
-
-      if (updateError) {
-        throw updateError;
+      if (!response.ok) {
+        const message = data.error || data.message || 'Failed to reset password.';
+        throw new Error(message);
       }
 
       setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');
@@ -185,6 +186,7 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
       setPassword('');
       setConfirmPassword('');
     } catch (err: any) {
+      console.error('Password reset error:', err);
       setError(err.message || 'Failed to reset password. The link may have expired. Please request a new one.');
     } finally {
       setLoading(false);

@@ -232,44 +232,82 @@ router.post('/reset-password', async (req, res) => {
 });
 
 /**
- * Verify recovery token endpoint - Verifies password reset token
+ * Reset password with token endpoint - Verifies token and updates password
  */
-router.get('/verify-recovery-token', async (req, res) => {
+router.post('/reset-password-with-token', async (req, res) => {
   try {
-    const { token } = req.query;
+    const { token, password } = req.body;
 
     if (!token) {
       return res.status(400).json({ error: 'Recovery token is required' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password is required and must be at least 6 characters' });
     }
 
     if (!supabaseAdmin) {
       return res.status(500).json({ error: 'Service unavailable' });
     }
 
-    // Verify the token with Supabase
+    console.log('[AUTH] Password reset with token requested');
+
+    // Verify the token and get user
+    let user = null;
     try {
-      // Exchange the recovery token for a session to verify it's valid
-      const { data, error } = await supabaseAdmin.auth.verifyOtp({
-        token_hash: token,
+      // Try to verify the token and get user info
+      const { data: verifyData, error: verifyError } = await supabaseAdmin.auth.verifyOtp({
+        token: token,
         type: 'recovery',
       });
 
-      if (error) {
-        console.error('[AUTH] Token verification failed:', error);
-        return res.status(400).json({ error: 'Invalid or expired recovery token' });
+      if (verifyError) {
+        // Try with token_hash as fallback
+        const { data: verifyData2, error: verifyError2 } = await supabaseAdmin.auth.verifyOtp({
+          token_hash: token,
+          type: 'recovery',
+        });
+
+        if (verifyError2) {
+          console.error('[AUTH] Token verification failed:', verifyError2);
+          return res.status(400).json({ error: 'Invalid or expired recovery token' });
+        }
+        user = verifyData2.user;
+      } else {
+        user = verifyData.user;
+      }
+    } catch (verifyError) {
+      console.error('[AUTH] Error verifying token:', verifyError);
+      return res.status(400).json({ error: 'Invalid or expired recovery token' });
+    }
+
+    if (!user) {
+      return res.status(400).json({ error: 'Could not identify user from token' });
+    }
+
+    // Update password using admin API
+    try {
+      const { data: updateData, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        user.id,
+        { password: password }
+      );
+
+      if (updateError) {
+        console.error('[AUTH] Password update failed:', updateError);
+        return res.status(500).json({ error: 'Failed to update password: ' + updateError.message });
       }
 
+      console.log('[AUTH] Password successfully updated for user:', user.email);
       res.json({
         success: true,
-        message: 'Token is valid',
-        user: data.user ? { id: data.user.id, email: data.user.email } : null,
+        message: 'Password has been reset successfully',
       });
-    } catch (verifyError) {
-      console.error('[AUTH] Error verifying recovery token:', verifyError);
-      res.status(500).json({ error: 'Failed to verify token' });
+    } catch (updateError) {
+      console.error('[AUTH] Error updating password:', updateError);
+      res.status(500).json({ error: 'Failed to update password' });
     }
   } catch (error) {
-    console.error('[AUTH] Recovery token verification error:', error);
+    console.error('[AUTH] Password reset with token error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
