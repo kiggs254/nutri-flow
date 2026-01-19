@@ -17,7 +17,20 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Backend URL helper (mirrors logic in geminiService)
+  const getBackendUrl = (): string => {
+    // Prefer Vite env in production
+    const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    if (envUrl && envUrl.trim() !== '') {
+      return envUrl.trim();
+    }
+    // Fallback to localhost in development
+    console.warn('VITE_BACKEND_URL not set, using default: http://localhost:3000');
+    return 'http://localhost:3000';
+  };
+
   // Check for reset token in URL when component mounts or opens
+  // MUST be before early return to follow rules of hooks
   useEffect(() => {
     if (isOpen) {
       const urlParams = new URLSearchParams(window.location.search);
@@ -32,18 +45,6 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
       }
     }
   }, [isOpen]);
-
-  // Backend URL helper (mirrors logic in geminiService)
-  const getBackendUrl = (): string => {
-    // Prefer Vite env in production
-    const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
-    if (envUrl && envUrl.trim() !== '') {
-      return envUrl.trim();
-    }
-    // Fallback to localhost in development
-    console.warn('VITE_BACKEND_URL not set, using default: http://localhost:3000');
-    return 'http://localhost:3000';
-  };
 
   if (!isOpen) return null;
 
