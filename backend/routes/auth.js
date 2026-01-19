@@ -141,6 +141,7 @@ router.post('/reset-password', async (req, res) => {
     }
 
     console.log('[AUTH] Reset password requested for:', email);
+    console.log('[AUTH] Using APP_URL for redirect:', appUrl);
 
     if (!isEmailServiceConfigured()) {
       console.error('[AUTH] Email service not configured (SMTP missing)');
@@ -176,7 +177,23 @@ router.post('/reset-password', async (req, res) => {
         console.error('[AUTH] Error from Supabase when generating reset link:', linkError);
       } else if (linkData?.properties?.action_link) {
         resetLink = linkData.properties.action_link;
-        console.log('[AUTH] Successfully generated Supabase recovery link');
+        console.log('[AUTH] Generated link from Supabase:', resetLink);
+        
+        // Fix the redirect URL if Supabase ignored our redirectTo option
+        // Replace any redirect_to parameter with our app URL
+        const correctRedirectUrl = encodeURIComponent(`${appUrl}/auth/reset-password`);
+        resetLink = resetLink.replace(
+          /redirect_to=[^&]*/,
+          `redirect_to=${correctRedirectUrl}`
+        );
+        
+        // If redirect_to wasn't in the URL, add it
+        if (!resetLink.includes('redirect_to=')) {
+          const separator = resetLink.includes('?') ? '&' : '?';
+          resetLink = `${resetLink}${separator}redirect_to=${correctRedirectUrl}`;
+        }
+        
+        console.log('[AUTH] Fixed redirect URL in link:', resetLink);
       } else {
         console.error('[AUTH] Supabase generateLink returned no action_link');
       }
