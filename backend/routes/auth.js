@@ -305,16 +305,29 @@ router.post('/reset-password-with-token', async (req, res) => {
       
       let updateSuccess = false;
 
-      // Try using the recovery session first (if we got one)
+      // Try using the recovery session first (if we got one and it has an access token)
       if (recoverySession && recoverySession.access_token) {
         try {
           console.log('[AUTH] Attempting password update via recovery session...');
+          console.log('[AUTH] Session access_token exists:', !!recoverySession.access_token);
+          
+          // Create a client with the session token
           const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
             global: {
               headers: {
                 Authorization: `Bearer ${recoverySession.access_token}`
               }
+            },
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
             }
+          });
+
+          // Set the session explicitly
+          await recoveryClient.auth.setSession({
+            access_token: recoverySession.access_token,
+            refresh_token: recoverySession.refresh_token || '',
           });
 
           const { data: updateData, error: updateError } = await recoveryClient.auth.updateUser({
@@ -335,19 +348,87 @@ router.post('/reset-password-with-token', async (req, res) => {
       // Fallback to admin API if session method didn't work
       if (!updateSuccess) {
         console.log('[AUTH] Using admin API to update password...');
-        const { data: adminUpdateData, error: adminUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
-          userId,
-          { password: password }
-        );
+        try {
+          // Try with just password first
+          const { data: adminUpdateData, error: adminUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+            userId,
+            { password: password }
+          );
 
-        if (adminUpdateError) {
-          console.error('[AUTH] Admin API update failed:', adminUpdateError);
+          if (adminUpdateError) {
+            console.error('[AUTH] Admin API update failed:', adminUpdateError);
+            console.error('[AUTH] Admin API error details:', JSON.stringify(adminUpdateError, null, 2));
+            
+            // Try alternative: use admin.generateLink to create a new recovery link, then verify it
+            // This is a workaround for self-hosted Supabase
+            console.log('[AUTH] Trying alternative: generate new recovery link and use it...');
+            
+            if (userEmail) {
+              // Generate a new recovery link for this user
+              const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'recovery',
+                email: userEmail,
+              });
+
+              if (!linkError && linkData?.properties?.action_link) {
+                // Extract token from the new link
+                const newLink = linkData.properties.action_link;
+                const urlMatch = newLink.match(/[?&]token=([^&]+)/);
+                const newToken = urlMatch ? urlMatch[1] : null;
+                
+                if (newToken) {
+                  // Verify the new token to get a session
+                  const { data: newVerifyData, error: newVerifyError } = await supabaseAdmin.auth.verifyOtp({
+                    token_hash: newToken,
+                    type: 'recovery',
+                  });
+
+                  if (!newVerifyError && newVerifyData?.session?.access_token) {
+                    const newRecoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
+                      global: {
+                        headers: {
+                          Authorization: `Bearer ${newVerifyData.session.access_token}`
+                        }
+                      }
+                    });
+
+                    await newRecoveryClient.auth.setSession({
+                      access_token: newVerifyData.session.access_token,
+                      refresh_token: newVerifyData.session.refresh_token || '',
+                    });
+
+                    const { error: newUpdateError } = await newRecoveryClient.auth.updateUser({
+                      password: password
+                    });
+
+                    if (!newUpdateError) {
+                      console.log('[AUTH] Password updated via new recovery link method');
+                      updateSuccess = true;
+                    } else {
+                      throw newUpdateError;
+                    }
+                  } else {
+                    throw newVerifyError || new Error('Could not verify new recovery token');
+                  }
+                } else {
+                  throw new Error('Could not extract token from new recovery link');
+                }
+              } else {
+                throw linkError || new Error('Could not generate new recovery link');
+              }
+            } else {
+              throw adminUpdateError;
+            }
+          } else {
+            console.log('[AUTH] Password updated successfully via admin API');
+            updateSuccess = true;
+          }
+        } catch (adminError) {
+          console.error('[AUTH] All password update methods failed:', adminError);
           return res.status(500).json({ 
-            error: 'Failed to update password: ' + (adminUpdateError.message || 'Unknown error') 
+            error: 'Failed to update password: ' + (adminError.message || 'Unknown error') 
           });
         }
-        
-        console.log('[AUTH] Password updated successfully via admin API');
       }
 
       console.log('[AUTH] Password successfully updated for user:', userEmail || userId);
