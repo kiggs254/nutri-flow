@@ -176,24 +176,23 @@ router.post('/reset-password', async (req, res) => {
       if (linkError) {
         console.error('[AUTH] Error from Supabase when generating reset link:', linkError);
       } else if (linkData?.properties?.action_link) {
-        resetLink = linkData.properties.action_link;
-        console.log('[AUTH] Generated link from Supabase:', resetLink);
+        const supabaseLink = linkData.properties.action_link;
+        console.log('[AUTH] Generated link from Supabase:', supabaseLink);
         
-        // Fix the redirect URL if Supabase ignored our redirectTo option
-        // Replace any redirect_to parameter with our app URL
-        const correctRedirectUrl = encodeURIComponent(`${appUrl}/auth/reset-password`);
-        resetLink = resetLink.replace(
-          /redirect_to=[^&]*/,
-          `redirect_to=${correctRedirectUrl}`
-        );
+        // Extract the token from Supabase's link
+        // Supabase link format: https://superbase.emmerce.io/auth/v1/verify?token=...&type=recovery&redirect_to=...
+        const urlMatch = supabaseLink.match(/[?&]token=([^&]+)/);
+        const token = urlMatch ? urlMatch[1] : null;
         
-        // If redirect_to wasn't in the URL, add it
-        if (!resetLink.includes('redirect_to=')) {
-          const separator = resetLink.includes('?') ? '&' : '?';
-          resetLink = `${resetLink}${separator}redirect_to=${correctRedirectUrl}`;
+        if (token) {
+          // Create our own link that goes directly to our app
+          // Our app will handle the token verification
+          resetLink = `${appUrl}/auth/reset-password?token=${encodeURIComponent(token)}&type=recovery`;
+          console.log('[AUTH] Created app redirect link with token:', resetLink);
+        } else {
+          console.error('[AUTH] Could not extract token from Supabase link');
+          resetLink = supabaseLink; // Fallback to original link
         }
-        
-        console.log('[AUTH] Fixed redirect URL in link:', resetLink);
       } else {
         console.error('[AUTH] Supabase generateLink returned no action_link');
       }
@@ -229,6 +228,49 @@ router.post('/reset-password', async (req, res) => {
     res.status(500).json({
       error: 'Unexpected error while processing password reset. Please try again later.',
     });
+  }
+});
+
+/**
+ * Verify recovery token endpoint - Verifies password reset token
+ */
+router.get('/verify-recovery-token', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Recovery token is required' });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Service unavailable' });
+    }
+
+    // Verify the token with Supabase
+    try {
+      // Exchange the recovery token for a session to verify it's valid
+      const { data, error } = await supabaseAdmin.auth.verifyOtp({
+        token_hash: token,
+        type: 'recovery',
+      });
+
+      if (error) {
+        console.error('[AUTH] Token verification failed:', error);
+        return res.status(400).json({ error: 'Invalid or expired recovery token' });
+      }
+
+      res.json({
+        success: true,
+        message: 'Token is valid',
+        user: data.user ? { id: data.user.id, email: data.user.email } : null,
+      });
+    } catch (verifyError) {
+      console.error('[AUTH] Error verifying recovery token:', verifyError);
+      res.status(500).json({ error: 'Failed to verify token' });
+    }
+  } catch (error) {
+    console.error('[AUTH] Recovery token verification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
