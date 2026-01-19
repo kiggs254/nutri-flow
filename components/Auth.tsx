@@ -40,10 +40,7 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
       if (token && type === 'recovery') {
         setResetToken(token);
         setView('reset');
-        // Clean up URL - remove query params using relative path
-        const pathname = window.location.pathname || '/';
-        const hash = window.location.hash || '';
-        window.history.replaceState(null, '', pathname + hash);
+        // Don't clean URL - token already extracted, avoid SecurityError
       }
     }
   }, [isOpen]);

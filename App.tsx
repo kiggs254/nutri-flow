@@ -88,10 +88,7 @@ const App: React.FC = () => {
     if (token && type === 'recovery') {
       // Open auth modal in reset password mode
       setShowAuthModal(true);
-      // Clean up URL - remove query params using relative path
-      const pathname = window.location.pathname || '/';
-      const hash = window.location.hash || '';
-      window.history.replaceState(null, '', pathname + hash);
+      // Don't clean URL - token already extracted, avoid SecurityError
     }
   }, []);
 
