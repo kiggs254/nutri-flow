@@ -161,7 +161,7 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Generate password reset link using Supabase admin API
-    let resetLink: string | null = null;
+    let resetLink = null;
 
     try {
       const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
