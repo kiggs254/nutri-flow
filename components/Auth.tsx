@@ -15,6 +15,18 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Backend URL helper (mirrors logic in geminiService)
+  const getBackendUrl = (): string => {
+    // Prefer Vite env in production
+    const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    if (envUrl && envUrl.trim() !== '') {
+      return envUrl.trim();
+    }
+    // Fallback to localhost in development
+    console.warn('VITE_BACKEND_URL not set, using default: http://localhost:3000');
+    return 'http://localhost:3000';
+  };
+
   if (!isOpen) return null;
 
   const resetState = () => {
@@ -75,14 +87,30 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     setLoading(true);
     resetState();
+
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
+      const backendUrl = getBackendUrl();
+
+      const response = await fetch(`${backendUrl}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
       });
-      if (error) throw error;
-      setSuccessMsg('Password reset link sent! Please check your email inbox.');
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = data.error || data.message || 'Failed to send password reset email.';
+        throw new Error(message);
+      }
+
+      setSuccessMsg(
+        data.message || 'If an account exists with this email, a password reset link has been sent.'
+      );
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to send password reset email. Please try again.');
     } finally {
       setLoading(false);
     }

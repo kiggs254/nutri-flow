@@ -142,58 +142,57 @@ router.post('/reset-password', async (req, res) => {
       return res.status(503).json({ error: 'Email service not configured' });
     }
 
-    // Generate password reset link using Supabase
-    let resetLink = null;
+    // We intentionally do NOT call supabase.auth.resetPasswordForEmail here,
+    // because that relies on Supabase's internal SMTP configuration, which
+    // you are not using. Instead, we:
+    // 1) Generate a recovery link with the service role key
+    // 2) Send the email ourselves via nodemailer.
 
-    if (supabaseAdmin) {
-      try {
-        // Generate password reset link
-        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: email,
-        });
-
-        if (!linkError && linkData?.properties?.action_link) {
-          resetLink = linkData.properties.action_link;
-        } else {
-          // Fallback: use Supabase's resetPasswordForEmail which generates the link
-          // But we need to intercept it, so we'll use a custom approach
-          resetLink = `${appUrl}/auth/reset-password?token=GENERATED_TOKEN`;
-        }
-      } catch (adminError) {
-        console.error('Error generating reset link:', adminError);
-      }
+    if (!supabaseAdmin) {
+      console.error('SUPABASE_SERVICE_ROLE_KEY is not configured; cannot generate recovery link');
+      // Still return success to avoid email enumeration
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
     }
 
-    // If we couldn't generate a link with admin, use the regular method
-    // Note: This will trigger Supabase's default email, but we'll send our own too
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${appUrl}/auth/reset-password`,
-    });
+    // Generate password reset link using Supabase admin API
+    let resetLink: string | null = null;
 
-    // Generate our own reset link if we have admin access
-    if (!resetLink && supabaseAdmin) {
-      // Try to get the user and generate a recovery token
-      const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
-      const user = userData?.users?.find((u) => u.email === email);
-      
-      if (user) {
-        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: email,
-        });
-        resetLink = linkData?.properties?.action_link || `${appUrl}/auth/reset-password`;
+    try {
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: {
+          redirectTo: `${appUrl}/auth/reset-password`,
+        },
+      });
+
+      if (linkError) {
+        console.error('Error from Supabase when generating reset link:', linkError);
+      } else if (linkData?.properties?.action_link) {
+        resetLink = linkData.properties.action_link;
       }
+    } catch (adminError) {
+      console.error('Exception while generating reset link:', adminError);
+    }
+
+    // If we still don't have a link, just return generic success
+    if (!resetLink) {
+      console.error('Failed to generate password reset link; returning generic success');
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
     }
 
     // Send our custom password reset email
-    if (resetLink) {
-      try {
-        await sendPasswordResetEmail(email, resetLink);
-      } catch (emailError) {
-        console.error('Error sending reset email:', emailError);
-        // Still return success if Supabase's email was sent
-      }
+    try {
+      await sendPasswordResetEmail(email, resetLink);
+    } catch (emailError) {
+      console.error('Error sending reset email:', emailError);
+      // Do not leak details to client; still return success
     }
 
     // Always return success to prevent email enumeration
