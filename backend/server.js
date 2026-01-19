@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import aiRoutes from './routes/ai.js';
 import notificationRoutes from './routes/notifications.js';
+import authRoutes from './routes/auth.js';
 
 // Load environment variables
 dotenv.config();
@@ -54,6 +55,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/ai', aiRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/auth', authRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
