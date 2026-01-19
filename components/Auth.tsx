@@ -160,31 +160,56 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     }
 
     try {
-      // Use backend endpoint to securely handle password reset with service role
       const backendUrl = getBackendUrl();
       
-      const response = await fetch(`${backendUrl}/api/auth/reset-password-with-token`, {
+      // Step 1: Verify token and get session from backend
+      const verifyResponse = await fetch(`${backendUrl}/api/auth/verify-recovery-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           token: resetToken,
-          password: password,
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
+      const verifyData = await verifyResponse.json().catch(() => ({}));
 
-      if (!response.ok) {
-        const message = data.error || data.message || 'Failed to reset password.';
+      if (!verifyResponse.ok) {
+        const message = verifyData.error || 'Failed to verify recovery token.';
         throw new Error(message);
+      }
+
+      if (!verifyData.session || !verifyData.session.access_token) {
+        throw new Error('Invalid session received from server');
+      }
+
+      // Step 2: Set the session in Supabase client
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: verifyData.session.access_token,
+        refresh_token: verifyData.session.refresh_token || '',
+      });
+
+      if (sessionError) {
+        throw new Error('Failed to establish session: ' + sessionError.message);
+      }
+
+      // Step 3: Update password using the authenticated session
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      if (updateError) {
+        throw new Error('Failed to update password: ' + updateError.message);
       }
 
       setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');
       setView('login');
       setPassword('');
       setConfirmPassword('');
+      
+      // Sign out to clear the recovery session
+      await supabase.auth.signOut();
     } catch (err: any) {
       console.error('Password reset error:', err);
       setError(err.message || 'Failed to reset password. The link may have expired. Please request a new one.');
