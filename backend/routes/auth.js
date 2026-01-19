@@ -252,59 +252,145 @@ router.post('/reset-password-with-token', async (req, res) => {
 
     console.log('[AUTH] Password reset with token requested');
 
-    // Verify the token and get user
-    let user = null;
+    // First, try to get user from token by checking flow_state or verifying token
+    // For recovery tokens, we need to verify it first to get the user
+    let userId = null;
+    let userEmail = null;
+
     try {
-      // Try to verify the token and get user info
+      // Method 1: Try to verify the token directly (this creates a session)
       const { data: verifyData, error: verifyError } = await supabaseAdmin.auth.verifyOtp({
         token: token,
         type: 'recovery',
       });
 
-      if (verifyError) {
-        // Try with token_hash as fallback
+      if (!verifyError && verifyData?.user) {
+        userId = verifyData.user.id;
+        userEmail = verifyData.user.email;
+        console.log('[AUTH] Token verified, user ID:', userId);
+      } else {
+        // Method 2: Try with token_hash
         const { data: verifyData2, error: verifyError2 } = await supabaseAdmin.auth.verifyOtp({
           token_hash: token,
           type: 'recovery',
         });
 
-        if (verifyError2) {
-          console.error('[AUTH] Token verification failed:', verifyError2);
-          return res.status(400).json({ error: 'Invalid or expired recovery token' });
+        if (!verifyError2 && verifyData2?.user) {
+          userId = verifyData2.user.id;
+          userEmail = verifyData2.user.email;
+          console.log('[AUTH] Token verified with token_hash, user ID:', userId);
+        } else {
+          // Method 3: Try to find user by checking the token in the database
+          // Extract email from token if possible, or query flow_state
+          console.log('[AUTH] Token verification failed, trying alternative method');
+          
+          // Try to get user from flow_state table (if accessible)
+          // This is a fallback - we'll try to update by email if we can extract it
+          const errorMsg = verifyError?.message || verifyError2?.message || 'Token verification failed';
+          console.error('[AUTH] Token verification error:', errorMsg);
+          
+          // For now, return error - we need valid token verification
+          return res.status(400).json({ 
+            error: 'Invalid or expired recovery token. Please request a new password reset link.' 
+          });
         }
-        user = verifyData2.user;
-      } else {
-        user = verifyData.user;
       }
     } catch (verifyError) {
       console.error('[AUTH] Error verifying token:', verifyError);
       return res.status(400).json({ error: 'Invalid or expired recovery token' });
     }
 
-    if (!user) {
+    if (!userId) {
       return res.status(400).json({ error: 'Could not identify user from token' });
     }
 
     // Update password using admin API
+    // For recovery tokens, we need to verify first to get a session, then update
     try {
-      const { data: updateData, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        user.id,
-        { password: password }
-      );
+      console.log('[AUTH] Attempting to update password for user:', userId);
+      
+      // First, verify the token again to get a fresh session
+      let session = null;
+      const { data: verifyData, error: verifyError } = await supabaseAdmin.auth.verifyOtp({
+        token: token,
+        type: 'recovery',
+      });
+
+      if (verifyError) {
+        const { data: verifyData2, error: verifyError2 } = await supabaseAdmin.auth.verifyOtp({
+          token_hash: token,
+          type: 'recovery',
+        });
+        
+        if (verifyError2 || !verifyData2?.session) {
+          console.error('[AUTH] Could not get session from token:', verifyError2 || verifyError);
+          return res.status(400).json({ error: 'Invalid or expired recovery token' });
+        }
+        session = verifyData2.session;
+      } else {
+        session = verifyData.session;
+      }
+
+      if (!session || !session.access_token) {
+        return res.status(400).json({ error: 'Could not create session from recovery token' });
+      }
+
+      // Create a Supabase client with the recovery session
+      const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      });
+
+      // Use the session to update the password
+      const { data: updateData, error: updateError } = await recoveryClient.auth.updateUser({
+        password: password
+      });
 
       if (updateError) {
         console.error('[AUTH] Password update failed:', updateError);
-        return res.status(500).json({ error: 'Failed to update password: ' + updateError.message });
+        console.error('[AUTH] Update error details:', JSON.stringify(updateError, null, 2));
+        
+        // Fallback: Try admin API directly
+        console.log('[AUTH] Trying admin API as fallback...');
+        const { data: adminUpdateData, error: adminUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { password: password }
+        );
+
+        if (adminUpdateError) {
+          console.error('[AUTH] Admin API also failed:', adminUpdateError);
+          return res.status(500).json({ 
+            error: 'Failed to update password: ' + (updateError.message || adminUpdateError.message || 'Unknown error') 
+          });
+        }
+        
+        console.log('[AUTH] Password updated via admin API fallback');
+      } else {
+        console.log('[AUTH] Password updated via session');
       }
 
-      console.log('[AUTH] Password successfully updated for user:', user.email);
+      console.log('[AUTH] Password successfully updated for user:', userEmail || userId);
+      
+      // Optionally send confirmation email
+      if (userEmail && isEmailServiceConfigured()) {
+        try {
+          await sendPasswordChangedEmail(userEmail);
+        } catch (emailError) {
+          console.error('[AUTH] Failed to send password changed email:', emailError);
+          // Don't fail the request if email fails
+        }
+      }
+
       res.json({
         success: true,
         message: 'Password has been reset successfully',
       });
     } catch (updateError) {
-      console.error('[AUTH] Error updating password:', updateError);
-      res.status(500).json({ error: 'Failed to update password' });
+      console.error('[AUTH] Exception updating password:', updateError);
+      res.status(500).json({ error: 'Failed to update password: ' + (updateError.message || 'Unknown error') });
     }
   } catch (error) {
     console.error('[AUTH] Password reset with token error:', error);
