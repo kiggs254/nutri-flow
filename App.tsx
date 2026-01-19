@@ -88,8 +88,10 @@ const App: React.FC = () => {
     if (token && type === 'recovery') {
       // Open auth modal in reset password mode
       setShowAuthModal(true);
-      // Clean up URL
-      window.history.replaceState(null, '', window.location.pathname);
+      // Clean up URL - remove query params
+      const url = new URL(window.location.href);
+      url.search = '';
+      window.history.replaceState(null, '', url.pathname + url.hash);
     }
   }, []);
 
