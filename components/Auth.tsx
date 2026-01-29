@@ -12,37 +12,41 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [resetToken, setResetToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Backend URL helper (mirrors logic in geminiService)
-  const getBackendUrl = (): string => {
-    // Prefer Vite env in production
-    const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
-    if (envUrl && envUrl.trim() !== '') {
-      return envUrl.trim();
-    }
-    // Fallback to localhost in development
-    console.warn('VITE_BACKEND_URL not set, using default: http://localhost:3000');
-    return 'http://localhost:3000';
-  };
-
-  // Check for reset token in URL when component mounts or opens
+  // Check for password reset session when component mounts or opens
+  // Supabase password reset uses hash fragments with access_token
   // MUST be before early return to follow rules of hooks
   useEffect(() => {
-    if (isOpen) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      const type = urlParams.get('type');
-      
-      if (token && type === 'recovery') {
-        setResetToken(token);
-        setView('reset');
-        // Don't clean URL - token already extracted, avoid SecurityError
-      }
+    if (!isOpen) return;
+
+    // Check if URL hash contains Supabase recovery tokens
+    const hash = window.location.hash;
+    const isRecoveryLink = hash.includes('type=recovery') || hash.includes('access_token');
+    
+    if (isRecoveryLink) {
+      // Wait a moment for Supabase to process the hash and establish session
+      setTimeout(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session && session.user) {
+            setView('reset');
+          }
+        });
+      }, 100);
     }
+
+    // Also listen to auth state changes in case session is established later
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session && isRecoveryLink && isOpen) {
+        setView('reset');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -52,7 +56,6 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     setSuccessMsg(null);
     setPassword('');
     setConfirmPassword('');
-    setResetToken(null);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -109,25 +112,17 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     resetState();
 
     try {
-      const backendUrl = getBackendUrl();
-
-      const response = await fetch(`${backendUrl}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
+      // Use Supabase's native password reset
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}${window.location.pathname}`,
       });
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        const message = data.error || data.message || 'Failed to send password reset email.';
-        throw new Error(message);
+      if (error) {
+        throw error;
       }
 
       setSuccessMsg(
-        data.message || 'If an account exists with this email, a password reset link has been sent.'
+        'If an account exists with this email, a password reset link has been sent. Please check your inbox.'
       );
     } catch (err: any) {
       setError(err.message || 'Failed to send password reset email. Please try again.');
@@ -140,12 +135,6 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     setLoading(true);
     resetState();
-
-    if (!resetToken) {
-      setError('Reset token is missing. Please request a new password reset link.');
-      setLoading(false);
-      return;
-    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
@@ -160,75 +149,20 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     }
 
     try {
-      const backendUrl = getBackendUrl();
+      // Check if we have a valid session (Supabase handles the recovery session automatically)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      // Step 1: Verify token and get session from backend
-      const verifyResponse = await fetch(`${backendUrl}/api/auth/verify-recovery-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token: resetToken,
-        }),
-      });
-
-      const verifyData = await verifyResponse.json().catch(() => ({}));
-
-      if (!verifyResponse.ok) {
-        const message = verifyData.error || 'Failed to verify recovery token.';
-        throw new Error(message);
+      if (sessionError || !session) {
+        throw new Error('No active session found. Please use the password reset link from your email.');
       }
 
-      if (!verifyData.session || !verifyData.session.access_token) {
-        throw new Error('Invalid session received from server');
-      }
-
-      // Step 2: Set the session in Supabase client
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: verifyData.session.access_token,
-        refresh_token: verifyData.session.refresh_token || '',
-      });
-
-      if (sessionError) {
-        throw new Error('Failed to establish session: ' + sessionError.message);
-      }
-
-      // Step 3: Try to update password using the authenticated session
-      let updateError = null;
-      const { error: clientUpdateError } = await supabase.auth.updateUser({
+      // Update password using Supabase's native method
+      const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       });
 
-      if (clientUpdateError) {
-        console.warn('[AUTH] Client-side password update failed, trying backend fallback:', clientUpdateError);
-        updateError = clientUpdateError;
-        
-        // Fallback: Use backend endpoint with admin API
-        try {
-          const backendResponse = await fetch(`${backendUrl}/api/auth/reset-password-with-token`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              token: resetToken,
-              password: password,
-            }),
-          });
-
-          const backendData = await backendResponse.json().catch(() => ({}));
-
-          if (!backendResponse.ok) {
-            throw new Error(backendData.error || 'Backend password update failed');
-          }
-
-          // Backend update succeeded
-          console.log('[AUTH] Password updated successfully via backend fallback');
-        } catch (backendError: any) {
-          // Both methods failed
-          throw new Error('Failed to update password: ' + (backendError.message || updateError.message || 'Unknown error'));
-        }
+      if (updateError) {
+        throw updateError;
       }
 
       setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');

@@ -70,25 +70,16 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check for password reset token in URL (check both query params and hash)
+  // Check for Supabase password reset in URL hash
+  // Supabase uses hash fragments like #access_token=...&type=recovery
   // MUST be before any early returns to follow rules of hooks
   useEffect(() => {
-    // Check query parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    let token = urlParams.get('token');
-    let type = urlParams.get('type');
-    
-    // Also check hash for token (in case it's in the hash)
-    if (!token && window.location.hash) {
-      const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
-      token = hashParams.get('token');
-      type = hashParams.get('type');
-    }
-    
-    if (token && type === 'recovery') {
-      // Open auth modal in reset password mode
+    // Check if hash contains Supabase recovery tokens
+    if (window.location.hash && 
+        (window.location.hash.includes('type=recovery') || 
+         window.location.hash.includes('access_token'))) {
+      // Open auth modal - Supabase will handle the session automatically
       setShowAuthModal(true);
-      // Don't clean URL - token already extracted, avoid SecurityError
     }
   }, []);
 
