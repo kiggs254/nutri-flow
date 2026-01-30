@@ -739,10 +739,10 @@ router.post('/webhook', async (req, res) => {
             resetLink = linkData?.properties?.action_link;
           } catch (error) {
             console.error('Error generating reset link:', error);
-            resetLink = `${appUrl.replace(/\\/$/, '')}/?token=${encodeURIComponent(data.id)}`;
+            resetLink = `${appUrl.replace(/\/+$/, '')}/?token=${encodeURIComponent(data.id)}`;
           }
         } else {
-          resetLink = `${appUrl.replace(/\\/$/, '')}/?token=${encodeURIComponent(data.id)}`;
+          resetLink = `${appUrl.replace(/\/+$/, '')}/?token=${encodeURIComponent(data.id)}`;
         }
 
         // Send password reset email
