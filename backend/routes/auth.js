@@ -322,6 +322,7 @@ router.post('/confirm-password-reset', async (req, res) => {
 
     if (updateError) {
       console.error('[AUTH] admin.updateUserById failed:', updateError);
+      let goTrueErrorId = null;
 
       // Fallback: call GoTrue admin REST endpoint directly to get a clearer error body
       // (Sometimes supabase-js collapses details into "Error updating user")
@@ -339,6 +340,12 @@ router.post('/confirm-password-reset', async (req, res) => {
 
           const bodyText = await resp.text();
           console.error('[AUTH] GoTrue admin REST fallback status:', resp.status, 'body:', bodyText);
+          try {
+            const parsed = JSON.parse(bodyText);
+            goTrueErrorId = parsed?.error_id || null;
+          } catch {
+            // ignore
+          }
         } else {
           console.error('[AUTH] Cannot run REST fallback; missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
         }
@@ -346,7 +353,36 @@ router.post('/confirm-password-reset', async (req, res) => {
         console.error('[AUTH] GoTrue admin REST fallback failed:', restErr);
       }
 
-      return res.status(500).json({ error: 'Failed to update password' });
+      // Final fallback: set password hash directly in Postgres using pgcrypto bcrypt.
+      // This avoids GoTrue entirely but still produces a valid bcrypt hash for auth.
+      try {
+        const { data: sqlOk, error: sqlErr } = await supabaseAdmin.rpc('admin_set_user_password', {
+          p_user_id: tokenRow.user_id,
+          p_password: String(password),
+        });
+
+        if (sqlErr) {
+          console.error('[AUTH] admin_set_user_password RPC failed:', sqlErr);
+        } else if (sqlOk !== true) {
+          console.error('[AUTH] admin_set_user_password returned false for user:', tokenRow.user_id);
+        } else {
+          console.log('[AUTH] Password updated via SQL fallback (admin_set_user_password)');
+          // continue as success
+        }
+
+        if (sqlOk !== true) {
+          return res.status(500).json({
+            error: 'Failed to update password',
+            error_id: goTrueErrorId || undefined,
+          });
+        }
+      } catch (sqlFallbackErr) {
+        console.error('[AUTH] SQL fallback exception:', sqlFallbackErr);
+        return res.status(500).json({
+          error: 'Failed to update password',
+          error_id: goTrueErrorId || undefined,
+        });
+      }
     }
 
     // Mark token as used
