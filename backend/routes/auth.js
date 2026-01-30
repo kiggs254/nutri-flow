@@ -1,6 +1,7 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import {
   sendSignupConfirmationEmail,
   sendPasswordResetEmail,
@@ -18,6 +19,27 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.APP_URL || 'http://localhost:5173';
 const webhookSecret = process.env.WEBHOOK_SECRET;
+const passwordResetTokenPepper =
+  process.env.PASSWORD_RESET_TOKEN_PEPPER || supabaseServiceRoleKey || '';
+const passwordResetTokenTtlMinutes = parseInt(
+  process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '60',
+  10
+);
+
+// Very small in-memory rate limit (per-process). Good enough to reduce abuse.
+const resetRateLimit = new Map(); // key -> { count, resetAt }
+function isRateLimited(key, limit, windowMs) {
+  const now = Date.now();
+  const existing = resetRateLimit.get(key);
+  if (!existing || existing.resetAt <= now) {
+    resetRateLimit.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  if (existing.count >= limit) return true;
+  existing.count += 1;
+  resetRateLimit.set(key, existing);
+  return false;
+}
 
 // Create Supabase admin client with service role key for admin operations
 const supabaseAdmin = supabaseServiceRoleKey
@@ -143,36 +165,87 @@ router.post('/reset-password', async (req, res) => {
     console.log('[AUTH] Reset password requested for:', email);
     console.log('[AUTH] Using APP_URL for redirect:', appUrl);
 
-    // Use Supabase's native password reset email (now that SMTP is configured)
-    // Create a client instance to use resetPasswordForEmail
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('[AUTH] SUPABASE_URL or SUPABASE_ANON_KEY not configured');
-      return res.status(500).json({
-        error: 'Backend configuration error. Please contact support.',
+    // Backend-driven reset: generate our own one-time token and email it via Nodemailer.
+    // This avoids Supabase email + redirect issues entirely.
+    if (!isEmailServiceConfigured()) {
+      console.error('[AUTH] Email service not configured (SMTP missing)');
+      return res.status(503).json({ error: 'Email service not configured on backend' });
+    }
+
+    if (!supabaseAdmin) {
+      console.error('[AUTH] SUPABASE_SERVICE_ROLE_KEY missing; cannot process reset');
+      // Return generic success to avoid enumeration.
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
       });
     }
-    
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    if (!passwordResetTokenPepper) {
+      console.error('[AUTH] PASSWORD_RESET_TOKEN_PEPPER not configured');
+      return res.status(500).json({ error: 'Service unavailable' });
+    }
+
+    // Basic abuse protection
+    const ip = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip || 'unknown';
+    const emailKey = `${String(email).toLowerCase()}`;
+    if (isRateLimited(`reset:${ip}`, 10, 10 * 60 * 1000) || isRateLimited(`reset_email:${emailKey}`, 5, 10 * 60 * 1000)) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
+    }
+
+    // Lookup user id by email via SECURITY DEFINER function
+    const { data: userId, error: lookupError } = await supabaseAdmin.rpc('get_auth_user_id_by_email', {
+      p_email: email,
+    });
+
+    if (lookupError) {
+      console.error('[AUTH] Failed to lookup user by email:', lookupError);
+      // Still return generic success.
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
+    }
+
+    if (!userId) {
+      // Email not found; generic response.
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, a password reset link has been sent.',
+      });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(`${token}:${passwordResetTokenPepper}`)
+      .digest('hex');
+
+    const expiresAt = new Date(Date.now() + passwordResetTokenTtlMinutes * 60 * 1000).toISOString();
+
+    const { error: insertError } = await supabaseAdmin.from('password_reset_tokens').insert({
+      user_id: userId,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+    });
+
+    if (insertError) {
+      console.error('[AUTH] Failed to store password reset token:', insertError);
+      return res.status(500).json({ error: 'Failed to process password reset' });
+    }
+
+    const linkBase = appUrl.replace(/\/$/, '');
+    const resetLink = `${linkBase}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
     try {
-      // Use Supabase's native password reset - it will send the email via Supabase's SMTP
-      const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: `${appUrl.replace(/\/$/, '')}`,
-      });
-
-      if (resetError) {
-        console.error('[AUTH] Supabase resetPasswordForEmail error:', resetError);
-        return res.status(500).json({
-          error: 'Failed to send password reset email: ' + resetError.message,
-        });
-      }
-
-      console.log('[AUTH] Password reset email sent via Supabase SMTP');
-    } catch (error) {
-      console.error('[AUTH] Exception calling resetPasswordForEmail:', error);
-      return res.status(500).json({
-        error: 'Failed to send password reset email. Please try again later.',
-      });
+      await sendPasswordResetEmail(email, resetLink);
+      console.log('[AUTH] Password reset email dispatched via backend SMTP');
+    } catch (emailError) {
+      console.error('[AUTH] Failed to send password reset email:', emailError);
+      // Do not leak details
     }
 
     res.json({
@@ -184,6 +257,80 @@ router.post('/reset-password', async (req, res) => {
     res.status(500).json({
       error: 'Unexpected error while processing password reset. Please try again later.',
     });
+  }
+});
+
+/**
+ * Confirm password reset endpoint - Validates backend token and updates password via admin API
+ */
+router.post('/confirm-password-reset', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Reset token is required' });
+    }
+    if (!password || String(password).length < 6) {
+      return res.status(400).json({ error: 'Password is required and must be at least 6 characters' });
+    }
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
+    if (!passwordResetTokenPepper) {
+      return res.status(500).json({ error: 'Service unavailable' });
+    }
+
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(`${token}:${passwordResetTokenPepper}`)
+      .digest('hex');
+
+    const { data: tokenRow, error: tokenError } = await supabaseAdmin
+      .from('password_reset_tokens')
+      .select('id,user_id,expires_at,used_at')
+      .eq('token_hash', tokenHash)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (tokenError) {
+      console.error('[AUTH] Token lookup error:', tokenError);
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    if (!tokenRow || tokenRow.used_at) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const expiresAtMs = new Date(tokenRow.expires_at).getTime();
+    if (!expiresAtMs || expiresAtMs <= Date.now()) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    // Update password using admin API
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(tokenRow.user_id, {
+      password: String(password),
+    });
+
+    if (updateError) {
+      console.error('[AUTH] admin.updateUserById failed:', updateError);
+      return res.status(500).json({ error: 'Failed to update password' });
+    }
+
+    // Mark token as used
+    const { error: markError } = await supabaseAdmin
+      .from('password_reset_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', tokenRow.id);
+
+    if (markError) {
+      console.warn('[AUTH] Failed to mark token as used:', markError);
+    }
+
+    res.json({ success: true, message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('[AUTH] Confirm password reset error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
