@@ -18,32 +18,41 @@ const normalizeOrigin = (origin) => {
   return origin.replace(/\/+$/, ''); // Remove trailing slashes
 };
 
-const corsOrigin = CORS_ORIGIN === '*' ? true : normalizeOrigin(CORS_ORIGIN);
+// Allow comma-separated origins, e.g.:
+// CORS_ORIGIN=https://app.nutritherapy.co.ke,https://www.nutritherapy.co.ke,http://localhost:5173
+const allowedOrigins = CORS_ORIGIN === '*'
+  ? ['*']
+  : String(CORS_ORIGIN)
+      .split(',')
+      .map((o) => normalizeOrigin(o.trim()))
+      .filter(Boolean);
 
-// Middleware
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like curl/postman/server-to-server)
     if (!origin) return callback(null, true);
-    
-    if (corsOrigin === true || corsOrigin === '*') {
-      return callback(null, true);
-    }
-    
-    // Normalize the incoming origin (remove trailing slash)
-    const normalizedIncoming = normalizeOrigin(origin);
-    const normalizedAllowed = normalizeOrigin(corsOrigin);
-    
-    if (normalizedIncoming === normalizedAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+
+    const incoming = normalizeOrigin(origin);
+
+    if (allowedOrigins.includes('*')) return callback(null, true);
+
+    if (allowedOrigins.includes(incoming)) return callback(null, true);
+
+    // Do NOT throw an error here; errors can result in missing CORS headers,
+    // which shows up as a confusing browser CORS failure.
+    console.warn('[CORS] Blocked origin:', incoming, 'Allowed:', allowedOrigins);
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
+};
+
+// Middleware
+app.use(cors(corsOptions));
+// Explicitly handle preflight requests for all routes
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Support large image payloads
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -82,5 +91,5 @@ if (missingVars.length > 0) {
 app.listen(PORT, () => {
   console.log(`AI Proxy Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`CORS origin: ${corsOrigin === true ? '*' : corsOrigin}`);
+  console.log(`CORS origin(s): ${allowedOrigins.includes('*') ? '*' : allowedOrigins.join(', ')}`);
 });
