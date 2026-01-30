@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, ChefHat, RefreshCw, Save, Upload, FileText, Edit2, Check, ShoppingCart, Printer, BarChart3, ChevronDown, ChevronUp, Calendar, AlertCircle, Trash2, Brain, PieChart, Copy, X } from 'lucide-react';
-import { generateMealPlan } from '../services/geminiService';
+import { generateMealPlan, refineMealPlan } from '../services/geminiService';
 import { DailyPlan, MealGenParams, Client, SavedMealPlan, Meal } from '../types';
 import { supabase } from '../services/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Pie, Cell, Legend } from 'recharts';
@@ -77,6 +77,9 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [refineInstructions, setRefineInstructions] = useState('');
+  const [refining, setRefining] = useState(false);
+  const [previousPlan, setPreviousPlan] = useState<DailyPlan[] | null>(null);
   const [savedPlans, setSavedPlans] = useState<SavedMealPlan[]>([]);
   const [saving, setSaving] = useState(false);
   const [planLabel, setPlanLabel] = useState(`Plan - ${new Date().toLocaleDateString()}`);
@@ -184,6 +187,8 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     setError(null);
     setPlan(null);
     setIsEditing(false);
+    setPreviousPlan(null);
+    setRefineInstructions('');
     setExpandedDayIndex(null);
 
     let finalParams = { ...params };
@@ -213,6 +218,39 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     } else {
         executeGeneration(finalParams);
     }
+  };
+
+  const handleRefinePlan = async () => {
+    if (!params || !plan) return;
+    const trimmed = refineInstructions.trim();
+    if (!trimmed) {
+      showToast('Please enter refinement instructions first.', 'error');
+      return;
+    }
+
+    setRefining(true);
+    setError(null);
+    // Deep copy for undo
+    setPreviousPlan(JSON.parse(JSON.stringify(plan)));
+
+    try {
+      const updated = await refineMealPlan(params, plan, trimmed);
+      setPlan(updated);
+      showToast('AI edits applied. Review before saving.', 'success');
+    } catch (e: any) {
+      setError(e.message || 'Failed to refine plan.');
+      console.error(e);
+      showToast(e.message || 'Failed to refine plan.', 'error');
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  const handleUndoRefine = () => {
+    if (!previousPlan) return;
+    setPlan(previousPlan);
+    setPreviousPlan(null);
+    showToast('Reverted to previous version.', 'success');
   };
 
   const handleSavePlan = async () => {
@@ -525,7 +563,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
             {savedPlans.length > 0 ? savedPlans.map(p => (
               <div key={p.id} className="group flex items-center justify-between p-3 bg-slate-50 rounded-lg border hover:bg-slate-100">
                 <div>
-                  <button onClick={() => { setPlan(p.planData); setPlanLabel(p.label); setIsEditing(false); }} className="font-semibold text-slate-700 hover:text-[#8C3A36] text-sm text-left">{p.label}</button>
+                  <button onClick={() => { setPlan(p.planData); setPlanLabel(p.label); setIsEditing(false); setPreviousPlan(null); setRefineInstructions(''); }} className="font-semibold text-slate-700 hover:text-[#8C3A36] text-sm text-left">{p.label}</button>
                   <p className="text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
                 </div>
                 <button onClick={() => handleDeleteSavedPlan(p.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -556,6 +594,41 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                         {saving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin"/> : <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4"/>} {saving ? 'Saving...' : <span className="hidden sm:inline">Save Plan</span>}
                     </button>
                 </div>
+            </div>
+            <div className="px-4 sm:px-0">
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <h4 className="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-[#8C3A36]" />
+                    Refine this plan with AI (before saving)
+                  </h4>
+                  {previousPlan && (
+                    <button
+                      type="button"
+                      onClick={handleUndoRefine}
+                      className="text-xs font-semibold text-slate-700 hover:text-slate-900"
+                    >
+                      Undo
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={refineInstructions}
+                  onChange={(e) => setRefineInstructions(e.target.value)}
+                  placeholder='e.g., \"Make lunches lower-carb, keep calories similar, swap dairy snacks for non-dairy options.\"'
+                  className="w-full p-3 border border-slate-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-[#8C3A36]/20 focus:border-[#8C3A36] outline-none resize-none h-20 sm:h-24 transition-all bg-white"
+                />
+                <div className="mt-3 flex flex-wrap gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={handleRefinePlan}
+                    disabled={refining || loading || !plan}
+                    className="px-3 sm:px-4 py-2 bg-slate-800 text-white rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-2 hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    {refining ? <><Loader2 className="w-4 h-4 animate-spin" /> Applying…</> : 'Apply AI edits'}
+                  </button>
+                </div>
+              </div>
             </div>
             {planAnalytics && (
                 <div className="bg-slate-50 rounded-xl border p-3 sm:p-4 grid md:grid-cols-2 gap-3 sm:gap-4 items-center">
@@ -594,6 +667,79 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                         <MealItem meal={day.breakfast} dayIndex={dayIndex} mealType="breakfast" />
                         <MealItem meal={day.lunch} dayIndex={dayIndex} mealType="lunch" />
                         <MealItem meal={day.dinner} dayIndex={dayIndex} mealType="dinner" />
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Snacks
+                            </h5>
+                            {isEditing && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = (plan || []).map((d, idx) => {
+                                    if (idx !== dayIndex) return d;
+                                    const snacks = Array.isArray(d.snacks) ? d.snacks : [];
+                                    return {
+                                      ...d,
+                                      snacks: [
+                                        ...snacks,
+                                        {
+                                          name: 'Snack',
+                                          calories: 0,
+                                          protein: '0g',
+                                          carbs: '0g',
+                                          fats: '0g',
+                                          ingredients: [],
+                                          instructions: ''
+                                        }
+                                      ]
+                                    };
+                                  });
+                                  setPlan(next);
+                                }}
+                                className="text-xs font-semibold text-[#8C3A36] hover:text-[#7a2f2b]"
+                              >
+                                + Add snack
+                              </button>
+                            )}
+                          </div>
+
+                          {Array.isArray(day.snacks) && day.snacks.length > 0 ? (
+                            <div className="space-y-2">
+                              {day.snacks.map((snack, snackIndex) => (
+                                <div key={snackIndex} className="relative">
+                                  <MealItem
+                                    meal={snack}
+                                    dayIndex={dayIndex}
+                                    mealType="snacks"
+                                    snackIndex={snackIndex}
+                                  />
+                                  {isEditing && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = (plan || []).map((d, idx) => {
+                                          if (idx !== dayIndex) return d;
+                                          const snacks = Array.isArray(d.snacks) ? d.snacks : [];
+                                          return { ...d, snacks: snacks.filter((_, i) => i !== snackIndex) };
+                                        });
+                                        setPlan(next);
+                                      }}
+                                      className="absolute top-2 right-2 text-xs font-semibold text-red-600 hover:text-red-700"
+                                      title="Remove snack"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400">
+                              {isEditing ? 'No snacks yet. Add one above.' : 'No snacks.'}
+                            </p>
+                          )}
+                        </div>
                     </div>
                   )}
                 </div>

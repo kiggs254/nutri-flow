@@ -90,6 +90,28 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
   }
 };
 
+export const refineMealPlan = async (
+  params: MealGenParams,
+  plan: DailyPlan[],
+  instructions: string
+): Promise<DailyPlan[]> => {
+  const provider = getAIProvider();
+
+  try {
+    const response = await callBackend('/api/ai/refine-meal-plan', {
+      provider,
+      params,
+      plan,
+      instructions
+    });
+
+    return response.plan || [];
+  } catch (error: any) {
+    console.error('Refine meal plan error:', error);
+    throw error;
+  }
+};
+
 export const analyzeFoodImage = async (
   base64Image: string | null, 
   mimeType: string | null, 

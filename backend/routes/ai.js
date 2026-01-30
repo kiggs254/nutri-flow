@@ -84,13 +84,20 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
 
     const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
   CRITICAL RULES:
-  1. Adhere strictly to all health constraints, allergies, and medication interactions.
-  2. Base meal suggestions on the client's goal and dietary history for preference.
+  1. Adhere strictly to all health constraints and medical considerations.
+  2. You MUST incorporate the client's Records in every decision:
+     - medicalHistory
+     - allergies
+     - medications (and potential food/medication interactions)
+     - dietaryHistory
+     - socialBackground (schedule, culture, lifestyle constraints)
+  3. Base meal suggestions on the client's goal and dietary history/preferences.
   3. Output must be a valid JSON object matching the requested schema exactly.
   4. Instructions: MAX 10 words.
   5. Ingredients: MAX 5 items, each MUST include specific quantity.
-  6. Snacks: Name & ingredients only (with quantities).
-  7. Be concise.
+  6. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
+  7. Snacks MUST include full nutrition + instructions, same as other meals.
+  8. Be concise.
   
   MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
   - calories: Must be a positive integer (e.g., 350, 450, 520)
@@ -286,6 +293,7 @@ JSON OUTPUT FORMAT (MANDATORY):
     "snacks": ${excludedMeals.includes('snacks') ? '[]' : '[ /* array of Meal objects */ ]'}
   }
 - Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
+- Snacks must be a SEPARATE section under "snacks" (array). Do NOT merge snacks into breakfast/lunch/dinner.
 - REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
 `;
 
@@ -414,6 +422,298 @@ JSON OUTPUT FORMAT (MANDATORY):
   } catch (error) {
     console.error('Generate meal plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate meal plan' });
+  }
+});
+
+// Refine an existing meal plan with custom instructions (before saving)
+router.post('/refine-meal-plan', authenticate, async (req, res) => {
+  try {
+    const { provider, params, plan, instructions } = req.body || {};
+
+    if (!provider) return res.status(400).json({ error: 'Provider is required' });
+    if (!params) return res.status(400).json({ error: 'params is required' });
+    if (!Array.isArray(plan) || plan.length === 0) return res.status(400).json({ error: 'plan must be a non-empty array' });
+    if (!instructions || String(instructions).trim() === '') return res.status(400).json({ error: 'instructions is required' });
+
+    // Keep exclusions consistent with generate-meal-plan
+    let excludedMeals = [];
+    if (Array.isArray(params.excludeMeals) && params.excludeMeals.length > 0) {
+      excludedMeals = params.excludeMeals;
+    } else if (params.excludeMeal) {
+      excludedMeals = [params.excludeMeal];
+    } else if (params.excludeLunch) {
+      excludedMeals = ['lunch'];
+    }
+
+    const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
+  CRITICAL RULES:
+  1. Adhere strictly to all health constraints and medical considerations.
+  2. You MUST incorporate the client's Records in every decision:
+     - medicalHistory
+     - allergies
+     - medications (and potential food/medication interactions)
+     - dietaryHistory
+     - socialBackground (schedule, culture, lifestyle constraints)
+  3. Base meal suggestions on the client's goal and dietary history/preferences.
+  3. Output must be a valid JSON object matching the requested schema exactly.
+  4. Instructions: MAX 10 words.
+  5. Ingredients: MAX 5 items, each MUST include specific quantity.
+  6. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
+  7. Snacks MUST include full nutrition + instructions, same as other meals.
+  8. Be concise.
+  
+  MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
+  - calories: Must be a positive integer (e.g., 350, 450, 520)
+  - protein: Must be a string with numeric value and "g" unit (e.g., "25g", "30g", "18g")
+  - carbs: Must be a string with numeric value and "g" unit (e.g., "45g", "60g", "35g")
+  - fats: Must be a string with numeric value and "g" unit (e.g., "12g", "15g", "8g")
+  
+  INGREDIENTS FORMAT - CRITICAL:
+  - Each ingredient MUST include the specific quantity/weight
+  - Use appropriate units: grams (g), milliliters (ml), pieces (pcs), cups, tablespoons (tbsp), teaspoons (tsp)
+  - Format: "quantity unit ingredient name" (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice", "200ml milk")
+  - Be specific and accurate with quantities to match the nutritional values provided
+  
+  Every breakfast, lunch, dinner, and snack MUST include:
+  1. Accurate calories and macro grammages
+  2. Specific quantities for ALL ingredients (e.g., "20g porridge", "150g chicken", "2 eggs", "1 cup rice")`;
+
+    const userPrompt = `
+    Client Profile:
+    - Age: ${params.age} y/o ${params.gender}
+    - Current Metrics: ${params.weight}kg, ${params.height}cm
+    - Primary Goal: ${params.goal}
+    - Activity Level: ${params.activityLevel}
+
+    Records (MUST BE CONSIDERED):
+    - Medical History: ${params.medicalHistory || 'None provided.'}
+    - Current Medications: ${params.medications || 'None provided.'}
+    - Allergies / Exclusions: ${params.allergies || 'None provided.'}
+    - Dietary History: ${params.dietaryHistory || 'None provided.'}
+    - Social Background: ${params.socialBackground || 'None provided.'}
+
+    Existing meal plan JSON (edit this plan):
+    ${JSON.stringify(plan)}
+
+    Requested changes:
+    ${String(instructions).trim()}
+
+    Return the FULL updated 7-day plan as valid JSON in the required format.${
+      excludedMeals.length > 0
+        ? `\nIMPORTANT: Meals excluded for every day: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to [] for every day.' : ''}`
+        : ''
+    }
+  `;
+
+    const planResponseSchema = {
+      type: "object",
+      properties: {
+        plan: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              day: { type: "string" },
+              breakfast: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  calories: { type: "integer" },
+                  protein: { type: "string" },
+                  carbs: { type: "string" },
+                  fats: { type: "string" },
+                  ingredients: { type: "array", items: { type: "string" } },
+                  instructions: { type: "string" }
+                },
+                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
+              },
+              lunch: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  calories: { type: "integer" },
+                  protein: { type: "string" },
+                  carbs: { type: "string" },
+                  fats: { type: "string" },
+                  ingredients: { type: "array", items: { type: "string" } },
+                  instructions: { type: "string" }
+                },
+                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
+              },
+              dinner: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  calories: { type: "integer" },
+                  protein: { type: "string" },
+                  carbs: { type: "string" },
+                  fats: { type: "string" },
+                  ingredients: { type: "array", items: { type: "string" } },
+                  instructions: { type: "string" }
+                },
+                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
+              },
+              snacks: { type: "array", items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  calories: { type: "integer" },
+                  protein: { type: "string" },
+                  carbs: { type: "string" },
+                  fats: { type: "string" },
+                  ingredients: { type: "array", items: { type: "string" } },
+                  instructions: { type: "string" }
+                },
+                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
+              }},
+              totalCalories: { type: "integer" },
+              summary: { type: "string" }
+            },
+            required: ["day", "breakfast", "lunch", "dinner", "snacks", "totalCalories", "summary"]
+          }
+        }
+      },
+      required: ["plan"]
+    };
+
+    const excludeInstruction = excludedMeals.length > 0
+      ? `\nIMPORTANT: Do NOT include the following meals in the meal plan: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to an empty array [] for every day.' : ''}${excludedMeals.filter(m => m !== 'snacks').length > 0 ? ` Set ${excludedMeals.filter(m => m !== 'snacks').map(m => `"${m}"`).join(', ')} to null or omit ${excludedMeals.filter(m => m !== 'snacks').length === 1 ? 'it' : 'them'} entirely.` : ''}`
+      : '';
+
+    const openAISystemPrompt = systemInstruction + `
+
+JSON OUTPUT FORMAT (MANDATORY):
+- Return a single JSON object with a top-level key "plan"
+- "plan" must be an array of 7 items (one per day), where each item has this exact structure:
+  {
+    "day": "Monday",
+    "breakfast": ${excludedMeals.includes('breakfast') ? 'null' : '{ /* Meal object */ }'},
+    "lunch": ${excludedMeals.includes('lunch') ? 'null' : '{ /* Meal object */ }'},
+    "dinner": ${excludedMeals.includes('dinner') ? 'null' : '{ /* Meal object */ }'},
+    "snacks": ${excludedMeals.includes('snacks') ? '[]' : '[ /* array of Meal objects */ ]'}
+  }
+- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
+- Snacks must be a SEPARATE section under "snacks" (array). Do NOT merge snacks into breakfast/lunch/dinner.
+- REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
+`;
+
+    let resultText;
+    if (provider === 'gemini') {
+      resultText = await callGemini({
+        systemInstruction,
+        parts: [{ text: userPrompt }],
+        responseSchema: planResponseSchema,
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+        maxOutputTokens: 8192
+      });
+    } else if (provider === 'openai') {
+      resultText = await callOpenAI({
+        systemPrompt: openAISystemPrompt,
+        userPrompt,
+        jsonMode: true,
+        model: 'gpt-4o',
+        temperature: 0.7,
+        maxTokens: 4096
+      });
+    } else {
+      resultText = await callDeepSeek({
+        systemPrompt: openAISystemPrompt,
+        userPrompt,
+        jsonMode: true,
+        temperature: 0.7,
+        maxTokens: 4096
+      });
+    }
+
+    const parsed = JSON.parse(resultText || '{}');
+
+    const normalizeEntryToDailyPlan = (entry) => {
+      if (!entry || typeof entry !== 'object') {
+        throw new Error('Invalid plan entry format from model.');
+      }
+
+      const anyEntry = entry;
+      const day = anyEntry.day ?? 'Day';
+
+      let breakfast = anyEntry.breakfast;
+      let lunch = anyEntry.lunch;
+      let dinner = anyEntry.dinner;
+      let snacks = Array.isArray(anyEntry.snacks) ? anyEntry.snacks : [];
+
+      const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
+      if (!breakfast && !lunch && !dinner && meals && meals.length) {
+        let mealIndex = 0;
+        if (!excludedMeals.includes('breakfast')) {
+          breakfast = meals[mealIndex] ?? null;
+          mealIndex++;
+        } else {
+          breakfast = null;
+        }
+        if (!excludedMeals.includes('lunch')) {
+          lunch = meals[mealIndex] ?? null;
+          mealIndex++;
+        } else {
+          lunch = null;
+        }
+        if (!excludedMeals.includes('dinner')) {
+          dinner = meals[mealIndex] ?? null;
+          mealIndex++;
+        } else {
+          dinner = null;
+        }
+        if (!excludedMeals.includes('snacks')) {
+          const extraSnacks = meals.slice(mealIndex);
+          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
+        }
+      } else {
+        if (excludedMeals.includes('breakfast')) breakfast = null;
+        if (excludedMeals.includes('lunch')) lunch = null;
+        if (excludedMeals.includes('dinner')) dinner = null;
+        if (excludedMeals.includes('snacks')) snacks = [];
+      }
+
+      if (!Array.isArray(snacks)) {
+        snacks = [];
+      }
+
+      let totalCalories = anyEntry.totalCalories;
+      if (!totalCalories || totalCalories === 0) {
+        totalCalories = 0;
+        if (breakfast?.calories) totalCalories += breakfast.calories;
+        if (lunch?.calories) totalCalories += lunch.calories;
+        if (dinner?.calories) totalCalories += dinner.calories;
+        if (Array.isArray(snacks)) {
+          snacks.forEach((snack) => {
+            if (snack?.calories) totalCalories += snack.calories;
+          });
+        }
+      }
+
+      return {
+        day,
+        breakfast,
+        lunch,
+        dinner,
+        snacks,
+        totalCalories,
+        summary: anyEntry.summary ?? ''
+      };
+    };
+
+    let refinedPlan;
+    if (Array.isArray(parsed.plan)) {
+      refinedPlan = parsed.plan.map(normalizeEntryToDailyPlan);
+    } else if (Array.isArray(parsed)) {
+      refinedPlan = parsed.map(normalizeEntryToDailyPlan);
+    } else {
+      throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
+    }
+
+    res.json({ plan: refinedPlan });
+  } catch (error) {
+    console.error('Refine meal plan error:', error);
+    res.status(500).json({ error: error.message || 'Failed to refine meal plan' });
   }
 });
 

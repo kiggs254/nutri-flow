@@ -895,8 +895,13 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ portalToken }) => {
                                                             <div>
                                                                 <p className="text-sm font-semibold text-slate-700">{snack.name}</p>
                                                                 <p className="text-xs text-slate-500">{snack.ingredients?.join(', ')}</p>
+                                                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] mt-2 font-medium">
+                                                                  <span className="text-slate-600">{snack.calories} kcal</span>
+                                                                  <span className="text-blue-600">{snack.protein} P</span>
+                                                                  <span className="text-amber-600">{snack.carbs} C</span>
+                                                                  <span className="text-rose-600">{snack.fats} F</span>
+                                                                </div>
                                                             </div>
-                                                            <span className="text-xs font-bold text-slate-500">{snack.calories} kcal</span>
                                                         </div>
                                                     </div>
                                                 ))}

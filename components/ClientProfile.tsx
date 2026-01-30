@@ -53,6 +53,20 @@ const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => voi
         </div>
     );
   };
+
+  const SnackDetail: React.FC<{snack: Meal}> = ({ snack }) => {
+    if (!snack) return null;
+    return (
+      <div className="flex gap-2 items-start w-full min-w-0">
+        <span className="text-lg sm:text-xl mt-0.5 flex-shrink-0">🍎</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-slate-700 text-xs sm:text-sm break-words">{snack.name}</p>
+          <p className="text-[10px] sm:text-xs text-slate-500 break-words line-clamp-2">{snack.ingredients?.join(', ')}</p>
+          <div className="text-[10px] sm:text-xs text-slate-400 mt-1">{snack.calories}kcal • P:{snack.protein} C:{snack.carbs} F:{snack.fats}</div>
+        </div>
+      </div>
+    );
+  };
   
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm w-full">
@@ -79,6 +93,20 @@ const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => voi
                             <MealDetail meal={day.lunch} type="Lunch"/>
                             <MealDetail meal={day.dinner} type="Dinner"/>
                         </div>
+                        {Array.isArray(day.snacks) && day.snacks.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-slate-100">
+                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-2">
+                              Snacks
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {day.snacks.map((snack, idx) => (
+                                <div key={idx} className="p-2 bg-slate-50 rounded-md border">
+                                  <SnackDetail snack={snack} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                     </div>
                 ))}
             </div>
