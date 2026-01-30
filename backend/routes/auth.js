@@ -238,7 +238,9 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const linkBase = appUrl.replace(/\/$/, '');
-    const resetLink = `${linkBase}/auth/reset-password?token=${encodeURIComponent(token)}`;
+    // Use root path to avoid SPA deep-link 404s on some hosts (Vercel, etc.)
+    // App.tsx will open the reset modal when it sees ?token=...
+    const resetLink = `${linkBase}/?token=${encodeURIComponent(token)}`;
 
     try {
       await sendPasswordResetEmail(email, resetLink);
@@ -737,10 +739,10 @@ router.post('/webhook', async (req, res) => {
             resetLink = linkData?.properties?.action_link;
           } catch (error) {
             console.error('Error generating reset link:', error);
-            resetLink = `${appUrl}/auth/reset-password?token=${data.id}`;
+            resetLink = `${appUrl.replace(/\\/$/, '')}/?token=${encodeURIComponent(data.id)}`;
           }
         } else {
-          resetLink = `${appUrl}/auth/reset-password?token=${data.id}`;
+          resetLink = `${appUrl.replace(/\\/$/, '')}/?token=${encodeURIComponent(data.id)}`;
         }
 
         // Send password reset email
