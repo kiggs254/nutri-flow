@@ -322,6 +322,30 @@ router.post('/confirm-password-reset', async (req, res) => {
 
     if (updateError) {
       console.error('[AUTH] admin.updateUserById failed:', updateError);
+
+      // Fallback: call GoTrue admin REST endpoint directly to get a clearer error body
+      // (Sometimes supabase-js collapses details into "Error updating user")
+      try {
+        if (supabaseUrl && supabaseServiceRoleKey) {
+          const resp = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/admin/users/${tokenRow.user_id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+              'apikey': supabaseServiceRoleKey,
+            },
+            body: JSON.stringify({ password: String(password) }),
+          });
+
+          const bodyText = await resp.text();
+          console.error('[AUTH] GoTrue admin REST fallback status:', resp.status, 'body:', bodyText);
+        } else {
+          console.error('[AUTH] Cannot run REST fallback; missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+        }
+      } catch (restErr) {
+        console.error('[AUTH] GoTrue admin REST fallback failed:', restErr);
+      }
+
       return res.status(500).json({ error: 'Failed to update password' });
     }
 
