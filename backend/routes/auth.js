@@ -280,6 +280,12 @@ router.post('/confirm-password-reset', async (req, res) => {
       return res.status(500).json({ error: 'Service unavailable' });
     }
 
+    // Basic abuse protection
+    const ip = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip || 'unknown';
+    if (isRateLimited(`confirm:${ip}`, 20, 10 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+
     const tokenHash = crypto
       .createHash('sha256')
       .update(`${token}:${passwordResetTokenPepper}`)

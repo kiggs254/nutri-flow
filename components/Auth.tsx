@@ -12,41 +12,30 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Check for password reset session when component mounts or opens
-  // Supabase password reset uses hash fragments with access_token
+  // Backend URL helper
+  const getBackendUrl = (): string => {
+    const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    if (envUrl && envUrl.trim() !== '') return envUrl.trim();
+    console.warn('VITE_BACKEND_URL not set, using default: http://localhost:3000');
+    return 'http://localhost:3000';
+  };
+
+  // Check for password reset token in URL when component mounts or opens
   // MUST be before early return to follow rules of hooks
   useEffect(() => {
     if (!isOpen) return;
 
-    // Check if URL hash contains Supabase recovery tokens
-    const hash = window.location.hash;
-    const isRecoveryLink = hash.includes('type=recovery') || hash.includes('access_token');
-    
-    if (isRecoveryLink) {
-      // Wait a moment for Supabase to process the hash and establish session
-      setTimeout(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (session && session.user) {
-            setView('reset');
-          }
-        });
-      }, 100);
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      setResetToken(token);
+      setView('reset');
     }
-
-    // Also listen to auth state changes in case session is established later
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session && isRecoveryLink && isOpen) {
-        setView('reset');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -56,6 +45,7 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     setSuccessMsg(null);
     setPassword('');
     setConfirmPassword('');
+    setResetToken(null);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -112,9 +102,8 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     resetState();
 
     try {
-      // Use backend endpoint which generates link with correct redirect URL
-      // and uses Supabase's email service
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+      // Backend-driven reset email (Nodemailer)
+      const backendUrl = getBackendUrl();
       
       const response = await fetch(`${backendUrl}/api/auth/reset-password`, {
         method: 'POST',
@@ -146,6 +135,12 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     setLoading(true);
     resetState();
 
+    if (!resetToken) {
+      setError('Reset token is missing. Please request a new password reset link.');
+      setLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       setLoading(false);
@@ -159,29 +154,25 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     }
 
     try {
-      // Check if we have a valid session (Supabase handles the recovery session automatically)
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        throw new Error('No active session found. Please use the password reset link from your email.');
-      }
+      const backendUrl = getBackendUrl();
 
-      // Update password using Supabase's native method
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password,
+      const response = await fetch(`${backendUrl}/api/auth/confirm-password-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, password }),
       });
 
-      if (updateError) {
-        throw updateError;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data.error || data.message || 'Failed to reset password.';
+        throw new Error(message);
       }
 
       setSuccessMsg('Password has been reset successfully! You can now log in with your new password.');
       setView('login');
       setPassword('');
       setConfirmPassword('');
-      
-      // Sign out to clear the recovery session
-      await supabase.auth.signOut();
+      setResetToken(null);
     } catch (err: any) {
       console.error('Password reset error:', err);
       setError(err.message || 'Failed to reset password. The link may have expired. Please request a new one.');

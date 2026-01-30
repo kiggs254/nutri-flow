@@ -60,38 +60,18 @@ const App: React.FC = () => {
       setSession(session);
       if (session) {
         setShowAuthModal(false);
-        if (window.location.hash && window.location.hash.includes('access_token')) {
-          // Clear the hash from URL after Supabase redirect
-          window.history.replaceState(null, '', window.location.pathname);
-        }
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check for Supabase password reset in URL hash
-  // Supabase uses hash fragments like #access_token=...&type=recovery
+  // Check for backend-driven password reset link (?token=...)
   // MUST be before any early returns to follow rules of hooks
   useEffect(() => {
-    // Check if we're on Supabase dashboard with recovery hash (redirect case)
-    const isSupabaseDashboard = window.location.hostname.includes('superbasestudio.emmerce.io') || 
-                                 window.location.hostname.includes('superbase.emmerce.io');
-    
-    if (isSupabaseDashboard && window.location.hash && 
-        (window.location.hash.includes('type=recovery') || 
-         window.location.hash.includes('access_token'))) {
-      // Extract the hash and redirect to our app
-      const appUrl = import.meta.env.VITE_APP_URL || 'https://app.nutritherapy.co.ke';
-      window.location.href = `${appUrl}${window.location.hash}`;
-      return;
-    }
-    
-    // Check if hash contains Supabase recovery tokens on our app
-    if (window.location.hash && 
-        (window.location.hash.includes('type=recovery') || 
-         window.location.hash.includes('access_token'))) {
-      // Open auth modal - Supabase will handle the session automatically
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
       setShowAuthModal(true);
     }
   }, []);
