@@ -112,17 +112,27 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
     resetState();
 
     try {
-      // Use Supabase's native password reset
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}${window.location.pathname}`,
+      // Use backend endpoint which generates link with correct redirect URL
+      // and uses Supabase's email service
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+      
+      const response = await fetch(`${backendUrl}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
       });
 
-      if (error) {
-        throw error;
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = data.error || 'Failed to send password reset email.';
+        throw new Error(message);
       }
 
       setSuccessMsg(
-        'If an account exists with this email, a password reset link has been sent. Please check your inbox.'
+        data.message || 'If an account exists with this email, a password reset link has been sent. Please check your inbox.'
       );
     } catch (err: any) {
       setError(err.message || 'Failed to send password reset email. Please try again.');

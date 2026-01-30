@@ -74,7 +74,20 @@ const App: React.FC = () => {
   // Supabase uses hash fragments like #access_token=...&type=recovery
   // MUST be before any early returns to follow rules of hooks
   useEffect(() => {
-    // Check if hash contains Supabase recovery tokens
+    // Check if we're on Supabase dashboard with recovery hash (redirect case)
+    const isSupabaseDashboard = window.location.hostname.includes('superbasestudio.emmerce.io') || 
+                                 window.location.hostname.includes('superbase.emmerce.io');
+    
+    if (isSupabaseDashboard && window.location.hash && 
+        (window.location.hash.includes('type=recovery') || 
+         window.location.hash.includes('access_token'))) {
+      // Extract the hash and redirect to our app
+      const appUrl = import.meta.env.VITE_APP_URL || 'https://app.nutritherapy.co.ke';
+      window.location.href = `${appUrl}${window.location.hash}`;
+      return;
+    }
+    
+    // Check if hash contains Supabase recovery tokens on our app
     if (window.location.hash && 
         (window.location.hash.includes('type=recovery') || 
          window.location.hash.includes('access_token'))) {

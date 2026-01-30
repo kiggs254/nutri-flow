@@ -143,77 +143,33 @@ router.post('/reset-password', async (req, res) => {
     console.log('[AUTH] Reset password requested for:', email);
     console.log('[AUTH] Using APP_URL for redirect:', appUrl);
 
-    if (!isEmailServiceConfigured()) {
-      console.error('[AUTH] Email service not configured (SMTP missing)');
-      return res.status(503).json({ error: 'Email service not configured on backend' });
-    }
-
-    // We intentionally do NOT call supabase.auth.resetPasswordForEmail here,
-    // because that relies on Supabase's internal SMTP configuration, which
-    // you are not using. Instead, we:
-    // 1) Generate a recovery link with the service role key
-    // 2) Send the email ourselves via nodemailer.
-
-    if (!supabaseAdmin) {
-      console.error('[AUTH] SUPABASE_SERVICE_ROLE_KEY is not configured; cannot generate recovery link');
+    // Use Supabase's native password reset email (now that SMTP is configured)
+    // Create a client instance to use resetPasswordForEmail
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('[AUTH] SUPABASE_URL or SUPABASE_ANON_KEY not configured');
       return res.status(500).json({
-        error: 'Backend is missing SUPABASE_SERVICE_ROLE_KEY. Cannot generate password reset link.',
+        error: 'Backend configuration error. Please contact support.',
       });
     }
-
-    // Generate password reset link using Supabase admin API
-    let resetLink = null;
+    
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
     try {
-      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email,
-        options: {
-          redirectTo: `${appUrl}/auth/reset-password`,
-        },
+      // Use Supabase's native password reset - it will send the email via Supabase's SMTP
+      const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: `${appUrl.replace(/\/$/, '')}`,
       });
 
-      if (linkError) {
-        console.error('[AUTH] Error from Supabase when generating reset link:', linkError);
-      } else if (linkData?.properties?.action_link) {
-        const supabaseLink = linkData.properties.action_link;
-        console.log('[AUTH] Generated link from Supabase:', supabaseLink);
-        
-        // Extract the token from Supabase's link
-        // Supabase link format: https://superbase.emmerce.io/auth/v1/verify?token=...&type=recovery&redirect_to=...
-        const urlMatch = supabaseLink.match(/[?&]token=([^&]+)/);
-        const token = urlMatch ? urlMatch[1] : null;
-        
-        if (token) {
-          // Create our own link that goes directly to our app
-          // Our app will handle the token verification
-          resetLink = `${appUrl}/auth/reset-password?token=${encodeURIComponent(token)}&type=recovery`;
-          console.log('[AUTH] Created app redirect link with token:', resetLink);
-        } else {
-          console.error('[AUTH] Could not extract token from Supabase link');
-          resetLink = supabaseLink; // Fallback to original link
-        }
-      } else {
-        console.error('[AUTH] Supabase generateLink returned no action_link');
+      if (resetError) {
+        console.error('[AUTH] Supabase resetPasswordForEmail error:', resetError);
+        return res.status(500).json({
+          error: 'Failed to send password reset email: ' + resetError.message,
+        });
       }
-    } catch (adminError) {
-      console.error('[AUTH] Exception while generating reset link:', adminError);
-    }
 
-    // If we still don't have a link, just return generic success
-    if (!resetLink) {
-      console.error('[AUTH] Failed to generate password reset link; not sending email');
-      return res.status(500).json({
-        error: 'Failed to generate password reset link. Please contact support or try again later.',
-      });
-    }
-
-    // Send our custom password reset email
-    try {
-      await sendPasswordResetEmail(email, resetLink);
-      console.log('[AUTH] Password reset email dispatched via emailService');
-    } catch (emailError) {
-      console.error('[AUTH] Error sending reset email:', emailError);
+      console.log('[AUTH] Password reset email sent via Supabase SMTP');
+    } catch (error) {
+      console.error('[AUTH] Exception calling resetPasswordForEmail:', error);
       return res.status(500).json({
         error: 'Failed to send password reset email. Please try again later.',
       });
