@@ -3,6 +3,14 @@ export const SETUP_SQL = `
 -- 1. Extensions & Table Creation (Idempotent)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+CREATE TABLE IF NOT EXISTS public.client_groups (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_client_groups_user_id ON public.client_groups(user_id);
+
 CREATE TABLE IF NOT EXISTS public.clients (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -30,10 +38,12 @@ CREATE TABLE IF NOT EXISTS public.clients (
     portal_access_token uuid UNIQUE DEFAULT uuid_generate_v4() NOT NULL,
     dietary_history text,
     social_background text,
-    group_name text
+    group_name text,
+    group_id uuid REFERENCES public.client_groups(id) ON DELETE SET NULL
 );
 -- Performance index
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON public.clients(user_id);
+CREATE INDEX IF NOT EXISTS idx_clients_group_id ON public.clients(group_id);
 
 -- Add missing columns to existing clients table (for databases that were created before these fields were added)
 DO $$ 
@@ -60,6 +70,15 @@ BEGIN
                    AND table_name = 'clients' 
                    AND column_name = 'group_name') THEN
         ALTER TABLE public.clients ADD COLUMN group_name text;
+    END IF;
+    
+    -- Add group_id if it doesn't exist (FK added after client_groups exists)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_schema = 'public' 
+                   AND table_name = 'clients' 
+                   AND column_name = 'group_id') THEN
+        ALTER TABLE public.clients ADD COLUMN group_id uuid REFERENCES public.client_groups(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_clients_group_id ON public.clients(group_id);
     END IF;
 END $$;
 
@@ -106,6 +125,7 @@ ALTER TABLE public.medical_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_groups ENABLE ROW LEVEL SECURITY;
 
 -- CRITICAL SECURITY FIX: Force RLS for table owners as well.
 ALTER TABLE public.clients FORCE ROW LEVEL SECURITY;
@@ -119,6 +139,7 @@ ALTER TABLE public.medical_documents FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.reminders FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.client_notes FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.client_groups FORCE ROW LEVEL SECURITY;
 
 -- Drop ALL existing policies to ensure idempotency
 DROP POLICY IF EXISTS "Nutritionists can manage their own clients" ON public.clients;
@@ -132,6 +153,7 @@ DROP POLICY IF EXISTS "Nutritionists can manage client medical_documents" ON pub
 DROP POLICY IF EXISTS "Nutritionists can manage their own billing settings" ON public.billing_settings;
 DROP POLICY IF EXISTS "Nutritionists can manage client reminders" ON public.reminders;
 DROP POLICY IF EXISTS "Nutritionists can manage client notes" ON public.client_notes;
+DROP POLICY IF EXISTS "Users can manage their own client groups" ON public.client_groups;
 
 -- Create new, strict policies for authenticated users
 CREATE POLICY "Nutritionists can manage their own clients" ON public.clients FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -145,6 +167,7 @@ CREATE POLICY "Nutritionists can manage client medical_documents" ON public.medi
 CREATE POLICY "Nutritionists can manage their own billing settings" ON public.billing_settings FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Nutritionists can manage client reminders" ON public.reminders FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 CREATE POLICY "Nutritionists can manage client notes" ON public.client_notes FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
+CREATE POLICY "Users can manage their own client groups" ON public.client_groups FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 
 -- 3. Secure RPC Functions for Client Portal (Anonymous Access)

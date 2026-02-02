@@ -33,7 +33,8 @@ export interface Client {
   medications?: string; // e.g., "Metformin 500mg, Lisinopril 10mg"
   dietaryHistory?: string; // e.g., "Tried keto, prefers low-carb. Dislikes spicy food."
   socialBackground?: string; // e.g., "Works night shifts, lives with family, cultural dietary restrictions"
-  groupName?: string; // Optional group for list grouping/collapse
+  groupName?: string; // Display name (from group or legacy group_name)
+  groupId?: string; // FK to client_groups when using created groups
   habits?: {
     smoker: boolean;
     alcohol: 'None' | 'Occasional' | 'Regular';
@@ -71,6 +72,12 @@ export interface SavedMealPlan {
   createdAt: string;
   planData: DailyPlan[];
   label: string;
+}
+
+export interface ClientGroup {
+  id: string;
+  name: string;
+  createdAt?: string;
 }
 
 export interface ProgressLog {

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { Client } from '../types';
+import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail, X, ChevronDown, ChevronUp, FolderPlus } from 'lucide-react';
+import { Client, ClientGroup } from '../types';
 import { supabase } from '../services/supabase';
 import { SETUP_SQL } from '../utils/dbSchema';
 import { useToast } from '../utils/toast';
@@ -26,6 +26,11 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
   const [clientToDelete, setClientToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
+  const [showManageGroupsModal, setShowManageGroupsModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<ClientGroup | null>(null);
 
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -40,7 +45,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     height: 170,
     goal: 'Weight Loss',
     customGoal: '',
-    groupName: '',
+    groupId: '',
     bodyFatPercentage: '',
     bodyFatMass: '',
     skeletalMuscleMass: '',
@@ -77,14 +82,21 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     ].filter(g => g.clients.length > 0);
   }, [filteredClients]);
 
-  const uniqueGroupNames = useMemo(() => {
-    const set = new Set<string>();
-    clients.forEach(c => {
-      const g = (c.groupName || '').trim();
-      if (g) set.add(g);
-    });
-    return Array.from(set).sort();
-  }, [clients]);
+  const fetchClientGroups = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('client_groups')
+        .select('id, name, created_at')
+        .eq('user_id', user.id)
+        .order('name');
+      if (error) throw error;
+      setClientGroups((data || []).map((g: any) => ({ id: g.id, name: g.name, createdAt: g.created_at })));
+    } catch (e) {
+      setClientGroups([]);
+    }
+  };
 
   const toggleGroup = (groupName: string) => {
     setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
@@ -97,12 +109,13 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     setCollapsedGroups(next);
   };
 
-  const handleGroupChange = async (client: Client, newGroupName: string) => {
-    const value = newGroupName === '' || newGroupName === UNGROUPED_LABEL ? null : newGroupName;
+  const handleGroupChange = async (client: Client, newGroupId: string) => {
+    const groupId = newGroupId === '' || newGroupId === UNGROUPED_LABEL ? null : newGroupId;
+    const groupName = groupId ? clientGroups.find(g => g.id === groupId)?.name : undefined;
     try {
-      const { error } = await supabase.from('clients').update({ group_name: value }).eq('id', client.id);
+      const { error } = await supabase.from('clients').update({ group_id: groupId }).eq('id', client.id);
       if (error) throw error;
-      const updated = { ...client, groupName: value ?? undefined };
+      const updated = { ...client, groupId: groupId ?? undefined, groupName: groupName ?? undefined };
       onUpdateClient?.(updated);
       onRefresh();
     } catch (err: any) {
@@ -110,7 +123,46 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     }
   };
 
-  // This effect checks for the table missing error, but doesn't fetch.
+  const handleAddGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newGroupName.trim();
+    if (!name) return;
+    setAddingGroup(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase.from('client_groups').insert({ user_id: user.id, name });
+      if (error) throw error;
+      setNewGroupName('');
+      showToast('Group created', 'success');
+      fetchClientGroups();
+      onRefresh();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create group', 'error');
+    } finally {
+      setAddingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    try {
+      const { error } = await supabase.from('client_groups').delete().eq('id', groupId);
+      if (error) throw error;
+      showToast('Group removed', 'success');
+      setGroupToDelete(null);
+      fetchClientGroups();
+      onRefresh();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove group', 'error');
+    }
+  };
+
+  const confirmDeleteGroup = () => {
+    if (groupToDelete) {
+      handleDeleteGroup(groupToDelete.id);
+    }
+  };
+
   useEffect(() => {
     const checkTable = async () => {
       try {
@@ -123,6 +175,10 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       } catch (e) {}
     };
     checkTable();
+  }, []);
+
+  useEffect(() => {
+    fetchClientGroups();
   }, []);
 
 
@@ -144,7 +200,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         height: newClient.height,
         goal: finalGoal,
         status: 'Active',
-        group_name: newClient.groupName?.trim() || null,
+        group_id: newClient.groupId || null,
         body_fat_percentage: newClient.bodyFatPercentage ? parseFloat(newClient.bodyFatPercentage) : null,
         body_fat_mass: newClient.bodyFatMass ? parseFloat(newClient.bodyFatMass) : null,
         skeletal_muscle_mass: newClient.skeletalMuscleMass ? parseFloat(newClient.skeletalMuscleMass) : null,
@@ -162,7 +218,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       setShowAdvancedFields(false);
       setBodyFatFormat('kg');
       setMuscleMassFormat('kg');
-      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', groupName: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
+      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', groupId: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -223,12 +279,21 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       {!compact && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 md:mb-6">
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Clients</h2>
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="w-full sm:w-auto bg-[#8C3A36] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#7a2f2b] flex items-center justify-center gap-2 transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" /> Add Client
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => { setShowManageGroupsModal(true); setNewGroupName(''); }}
+              className="flex-1 sm:flex-none px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+            >
+              <FolderPlus className="w-4 h-4" /> Manage groups
+            </button>
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="flex-1 sm:flex-none bg-[#8C3A36] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#7a2f2b] flex items-center justify-center gap-2 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Add Client
+            </button>
+          </div>
         </div>
       )}
 
@@ -399,13 +464,13 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                             <select
-                              value={client.groupName || ''}
+                              value={client.groupId || ''}
                               onChange={e => handleGroupChange(client, e.target.value)}
                               className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white min-w-[120px]"
                             >
                               <option value="">{UNGROUPED_LABEL}</option>
-                              {uniqueGroupNames.map(g => (
-                                <option key={g} value={g}>{g}</option>
+                              {clientGroups.map(g => (
+                                <option key={g.id} value={g.id}>{g.name}</option>
                               ))}
                             </select>
                           </td>
@@ -571,13 +636,27 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                 </div>
                 <div className="space-y-1">
                    <label className="text-xs font-bold text-slate-700 uppercase">Group</label>
-                   <input 
-                     type="text" 
-                     className="w-full p-2 border border-slate-300 rounded-lg" 
-                     value={newClient.groupName} 
-                     onChange={e => setNewClient({...newClient, groupName: e.target.value})}
-                     placeholder="e.g., Weight loss batch 1"
-                   />
+                   <div className="flex gap-2">
+                     <select
+                       className="flex-1 p-2 border border-slate-300 rounded-lg bg-white"
+                       value={newClient.groupId}
+                       onChange={e => setNewClient({...newClient, groupId: e.target.value})}
+                     >
+                       <option value="">No group</option>
+                       {clientGroups.map(g => (
+                         <option key={g.id} value={g.id}>{g.name}</option>
+                       ))}
+                     </select>
+                     <button
+                       type="button"
+                       onClick={() => { setShowManageGroupsModal(true); setNewGroupName(''); }}
+                       className="px-3 py-2 border border-slate-300 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 flex items-center gap-1"
+                       title="Create or manage groups"
+                     >
+                       <FolderPlus className="w-4 h-4" />
+                     </button>
+                   </div>
+                   <p className="text-xs text-slate-500">Assign to a group when onboarding. Use Manage groups to create groups.</p>
                 </div>
                 <div className="space-y-1">
                    <label className="text-xs font-bold text-slate-700 uppercase">Goal</label>
@@ -668,6 +747,56 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         </div>
       )}
 
+      {showManageGroupsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-[#8C3A36] p-4 flex justify-between items-center text-white">
+              <h3 className="text-lg font-bold">Manage groups</h3>
+              <button onClick={() => setShowManageGroupsModal(false)} className="hover:bg-[#7a2f2b] p-1 rounded transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <form onSubmit={handleAddGroup} className="flex gap-2">
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                  placeholder="New group name"
+                  className="flex-1 p-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <button type="submit" disabled={addingGroup || !newGroupName.trim()} className="px-4 py-2 bg-[#8C3A36] text-white rounded-lg text-sm font-medium hover:bg-[#7a2f2b] disabled:opacity-50 flex items-center gap-1">
+                  {addingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  Add group
+                </button>
+              </form>
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Your groups</p>
+                {clientGroups.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-2">No groups yet. Create one above.</p>
+                ) : (
+                  <ul className="space-y-1 max-h-48 overflow-y-auto">
+                    {clientGroups.map(g => (
+                      <li key={g.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg">
+                        <span className="text-sm font-medium text-slate-800">{g.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setGroupToDelete(g)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="Remove group"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title="Delete Client"
@@ -678,6 +807,17 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
           setClientToDelete(null);
         }}
         confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={!!groupToDelete}
+        title="Remove group"
+        message={groupToDelete ? `Remove group "${groupToDelete.name}"? Clients in this group will become ungrouped.` : ''}
+        onConfirm={confirmDeleteGroup}
+        onCancel={() => setGroupToDelete(null)}
+        confirmText="Remove"
         cancelText="Cancel"
         variant="danger"
       />

@@ -95,11 +95,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const fetchClients = async () => {
     setClientsLoading(true);
     try {
-        const { data, error } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase
+          .from('clients')
+          .select('*, client_groups(name)')
+          .order('created_at', { ascending: false });
         if (error) throw error;
         if (data) {
           const formattedClients: Client[] = data.map((c: any) => ({
-            id: c.id, name: c.name, email: c.email, status: c.status || 'Active', goal: c.goal || 'General Health', lastCheckIn: c.last_check_in ? new Date(c.last_check_in).toLocaleDateString() : 'Never', avatarUrl: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=93C47D&color=fff`, age: c.age, weight: c.weight, height: c.height, activityLevel: c.activity_level, allergies: c.allergies, preferences: c.preferences, joinedAt: c.created_at, medicalHistory: c.medical_history, medications: c.medications, habits: c.habits ? JSON.parse(c.habits) : undefined, bodyFatPercentage: c.body_fat_percentage, bodyFatMass: c.body_fat_mass, skeletalMuscleMass: c.skeletal_muscle_mass, skeletalMusclePercentage: c.skeletal_muscle_percentage, portalAccessToken: c.portal_access_token, dietaryHistory: c.dietary_history, socialBackground: c.social_background, groupName: c.group_name || undefined
+            id: c.id, name: c.name, email: c.email, status: c.status || 'Active', goal: c.goal || 'General Health', lastCheckIn: c.last_check_in ? new Date(c.last_check_in).toLocaleDateString() : 'Never', avatarUrl: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=93C47D&color=fff`, age: c.age, weight: c.weight, height: c.height, activityLevel: c.activity_level, allergies: c.allergies, preferences: c.preferences, joinedAt: c.created_at, medicalHistory: c.medical_history, medications: c.medications, habits: c.habits ? JSON.parse(c.habits) : undefined, bodyFatPercentage: c.body_fat_percentage, bodyFatMass: c.body_fat_mass, skeletalMuscleMass: c.skeletal_muscle_mass, skeletalMusclePercentage: c.skeletal_muscle_percentage, portalAccessToken: c.portal_access_token, dietaryHistory: c.dietary_history, socialBackground: c.social_background, groupId: c.group_id || undefined, groupName: c.client_groups?.name ?? c.group_name ?? undefined
           }));
           setClients(formattedClients);
         }
