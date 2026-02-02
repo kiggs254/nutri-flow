@@ -33,6 +33,7 @@ export interface Client {
   medications?: string; // e.g., "Metformin 500mg, Lisinopril 10mg"
   dietaryHistory?: string; // e.g., "Tried keto, prefers low-carb. Dislikes spicy food."
   socialBackground?: string; // e.g., "Works night shifts, lives with family, cultural dietary restrictions"
+  groupName?: string; // Optional group for list grouping/collapse
   habits?: {
     smoker: boolean;
     alcohol: 'None' | 'Occasional' | 'Regular';
@@ -82,6 +83,14 @@ export interface ProgressLog {
   bodyFatMass?: number;
   skeletalMuscleMass?: number;
   skeletalMusclePercentage?: number;
+}
+
+export interface ClientNote {
+  id: string;
+  clientId: string;
+  content: string;
+  createdAt: string;
+  includeInAiPrompt: boolean;
 }
 
 export interface Invoice {
@@ -172,6 +181,8 @@ export interface MealGenParams {
   medications?: string;
   dietaryHistory?: string;
   socialBackground?: string;
+  /** Notes from nutritionist (client_notes with include_in_ai_prompt) for meal planning. */
+  nutritionistNotes?: string;
   /**
    * Which meals to exclude from the generated plan.
    * If set, the model should omit those meals (set them to null) for every day.

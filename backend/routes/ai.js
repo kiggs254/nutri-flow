@@ -159,6 +159,9 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
 
     Nutritionist's Custom Instructions:
     - ${params.customInstructions || 'None.'}
+
+    Nutritionist notes (use for meal planning):
+    - ${params.nutritionistNotes || 'None.'}
     
     ${params.referenceData ? "An image has been attached as reference material." : ""}
     
@@ -491,6 +494,9 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     - Allergies / Exclusions: ${params.allergies || 'None provided.'}
     - Dietary History: ${params.dietaryHistory || 'None provided.'}
     - Social Background: ${params.socialBackground || 'None provided.'}
+
+    Nutritionist notes (use for meal planning):
+    - ${params.nutritionistNotes || 'None.'}
 
     Existing meal plan JSON (edit this plan):
     ${JSON.stringify(plan)}

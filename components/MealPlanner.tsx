@@ -98,7 +98,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
 
   useEffect(() => {
     if (selectedClient) {
-      setParams({
+      const baseParams = {
         age: selectedClient.age || 30,
         gender: selectedClient.gender || 'Female',
         weight: selectedClient.weight || 70,
@@ -112,12 +112,26 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         dietaryHistory: selectedClient.dietaryHistory || '',
         socialBackground: selectedClient.socialBackground || '',
         customInstructions: '',
-        excludeMeals: [],
-      });
+        excludeMeals: [] as ('breakfast' | 'lunch' | 'dinner' | 'snacks')[],
+      };
+      setParams({ ...baseParams, nutritionistNotes: '' });
       fetchSavedPlans(selectedClient.id);
       setPlan(null);
       setError(null);
       setLoading(false);
+
+      (async () => {
+        const { data } = await supabase
+          .from('client_notes')
+          .select('content')
+          .eq('client_id', selectedClient.id)
+          .eq('include_in_ai_prompt', true)
+          .order('created_at', { ascending: false });
+        const notesText = data?.length
+          ? data.map((n: { content: string }) => n.content).join('\n\n')
+          : '';
+        setParams(prev => prev ? { ...prev, nutritionistNotes: notesText } : null);
+      })();
     } else {
       setParams(null);
       setPlan(null);
@@ -552,6 +566,11 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                   </div>
               </div>
             </div>
+            {params.nutritionistNotes?.trim() && (
+              <p className="text-xs text-slate-600 bg-[#F9F5F5] border border-[#8C3A36]/20 rounded-lg px-3 py-2">
+                Client notes marked &quot;Include in AI prompt&quot; are included in this plan.
+              </p>
+            )}
             <button onClick={handleGenerate} disabled={loading} className="w-full bg-[#8C3A36] text-white font-bold py-3 rounded-lg hover:bg-[#7a2f2b] transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
               {loading ? <Loader2 className="w-5 h-5 animate-spin"/> : <><Brain className="w-5 h-5"/> Generate 7-Day Plan</>}
             </button>

@@ -5,9 +5,9 @@ import {
   Camera, Brain, User, Plus, Trash2, Send, CheckCircle,
   ChevronLeft, ChevronRight, X, Mail, Loader2, Edit2, MapPin, DollarSign,
   Share2, Copy, MessageSquare, Dumbbell, Droplet, RefreshCw, AlertTriangle,
-  HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp, Bell
+  HeartPulse, Upload, Download, File as FileIcon, ChevronDown, ChevronUp, Bell, StickyNote
 } from 'lucide-react';
-import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings, Reminder } from '../types';
+import { Client, SavedMealPlan, Invoice, Appointment, FoodLog, Message, MedicalDocument, Meal, DailyPlan, BillingSettings, Reminder, ProgressLog, ClientNote } from '../types';
 import { supabase } from '../services/supabase';
 import { analyzeFoodImage, generateClientInsights, analyzeMedicalDocument, ExtractedRecords, getAIProvider } from '../services/geminiService';
 import { useToast } from '../utils/toast';
@@ -18,7 +18,7 @@ interface ClientProfileProps {
   client: Client;
   onBack: () => void;
   onUpdateClient: (updatedClient: Client) => void;
-  initialTab?: 'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records';
+  initialTab?: 'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records' | 'notes';
 }
 
 const getCurrencySymbol = (currencyCode?: string): string => {
@@ -118,7 +118,7 @@ const MealPlanCard: React.FC<{plan: SavedMealPlan, onDelete: (id: string) => voi
 
 const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateClient, initialTab }) => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records'>(initialTab || 'overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'meal_plans' | 'food' | 'billing' | 'schedule' | 'messages' | 'records' | 'notes'>(initialTab || 'overview');
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{type: string, id: string, name?: string} | null>(null);
   
@@ -223,6 +223,12 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   });
   const [savingProgressLog, setSavingProgressLog] = useState(false);
 
+  const [progressLogs, setProgressLogs] = useState<ProgressLog[]>([]);
+  const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [newNoteIncludeInAi, setNewNoteIncludeInAi] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
 
   useEffect(() => {
     setActiveTab(initialTab || 'overview');
@@ -234,7 +240,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       
-      const [plansRes, apptsRes, foodsRes, invRes, msgRes, docsRes, settingsRes, remindersRes] = await Promise.all([
+      const [plansRes, apptsRes, foodsRes, invRes, msgRes, docsRes, settingsRes, remindersRes, progressLogsRes, clientNotesRes] = await Promise.all([
           supabase.from('meal_plans').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
           supabase.from('appointments').select('*').eq('client_id', client.id).order('date', { ascending: true }),
           supabase.from('food_logs').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
@@ -243,6 +249,8 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           supabase.from('medical_documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
           supabase.from('billing_settings').select('*').eq('user_id', user.id).single(),
           supabase.rpc('get_client_reminders', { p_client_id: client.id }),
+          supabase.from('progress_logs').select('*').eq('client_id', client.id).order('date', { ascending: false }),
+          supabase.from('client_notes').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
       ]);
       if (plansRes.data) setMealPlans(plansRes.data.map(p => ({
         id: p.id, clientId: p.client_id, createdAt: p.created_at, planData: p.plan_data, label: p.day_label || 'Weekly Plan'
@@ -294,6 +302,32 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           isActive: rem.is_active !== false
         }));
         setReminders(formattedReminders);
+      }
+      if (progressLogsRes.data) {
+        setProgressLogs((progressLogsRes.data as any[]).map((l: any) => ({
+          id: l.id,
+          date: l.date,
+          weight: l.weight,
+          complianceScore: l.compliance_score ?? 0,
+          notes: l.notes || '',
+          bodyFatPercentage: l.body_fat_percentage,
+          bodyFatMass: l.body_fat_mass,
+          skeletalMuscleMass: l.skeletal_muscle_mass,
+          skeletalMusclePercentage: l.skeletal_muscle_percentage,
+        })));
+      } else {
+        setProgressLogs([]);
+      }
+      if (clientNotesRes.data) {
+        setClientNotes((clientNotesRes.data as any[]).map((n: any) => ({
+          id: n.id,
+          clientId: n.client_id,
+          content: n.content,
+          createdAt: n.created_at,
+          includeInAiPrompt: n.include_in_ai_prompt || false,
+        })));
+      } else {
+        setClientNotes([]);
       }
 
 
@@ -725,6 +759,29 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     }
   };
   
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const content = newNoteContent.trim();
+    if (!content) return;
+    setSavingNote(true);
+    try {
+      const { error } = await supabase.from('client_notes').insert({
+        client_id: client.id,
+        content,
+        include_in_ai_prompt: newNoteIncludeInAi,
+      });
+      if (error) throw error;
+      setNewNoteContent('');
+      setNewNoteIncludeInAi(false);
+      showToast('Note added', 'success');
+      fetchData();
+    } catch (e: any) {
+      showToast('Error adding note: ' + e.message, 'error');
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   // -- Records Tab Handlers --
   const handleSaveRecordsInfo = async () => {
     setIsSavingMedicalInfo(true);
@@ -1081,6 +1138,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     { id: 'meal_plans', label: 'Meal Plans', icon: FileText },
     { id: 'food', label: 'Food Logs', icon: Camera },
     { id: 'messages', label: 'Messages', icon: MessageSquare },
+    { id: 'notes', label: 'Notes', icon: StickyNote },
     { id: 'records', label: 'Records', icon: HeartPulse },
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
     { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -1284,6 +1342,75 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                   <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 min-w-0 p-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-[#8C3A36] focus:border-[#8C3A36]" />
                   <button type="submit" className="p-2 bg-[#8C3A36] text-white rounded-lg hover:bg-[#7a2f2b] disabled:opacity-50 flex-shrink-0" disabled={!newMessage.trim()}><Send className="w-4 h-4 sm:w-5 sm:h-5"/></button>
               </form>
+          </div>
+        );
+      case 'notes':
+        return (
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 w-full overflow-x-hidden">
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Progress log entries</h3>
+              <p className="text-xs sm:text-sm text-slate-500">Notes from progress check-ins (weight, compliance, body composition).</p>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {progressLogs.length === 0 ? (
+                  <p className="text-slate-400 text-sm py-4">No progress logs yet. Log progress from the Overview tab.</p>
+                ) : (
+                  progressLogs.map(log => (
+                    <div key={log.id} className="p-3 bg-slate-50 rounded-md border text-sm">
+                      <p className="font-semibold text-slate-700 text-xs uppercase tracking-wider">
+                        {new Date(log.date).toLocaleDateString()} – {log.weight} kg
+                        {log.complianceScore != null ? `, ${log.complianceScore}% compliance` : ''}
+                        {(log.bodyFatPercentage != null || log.bodyFatMass != null) ? ` · Body fat: ${log.bodyFatPercentage != null ? `${log.bodyFatPercentage}%` : `${log.bodyFatMass} kg`}` : ''}
+                        {(log.skeletalMuscleMass != null || log.skeletalMusclePercentage != null) ? ` · Muscle: ${log.skeletalMuscleMass != null ? `${log.skeletalMuscleMass} kg` : `${log.skeletalMusclePercentage}%`}` : ''}
+                      </p>
+                      {log.notes ? <p className="mt-2 text-slate-600 whitespace-pre-wrap">{log.notes}</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg border p-4 sm:p-6 space-y-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Manual notes</h3>
+              <form onSubmit={handleAddNote} className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Add note</label>
+                  <textarea
+                    value={newNoteContent}
+                    onChange={e => setNewNoteContent(e.target.value)}
+                    className="w-full mt-1 p-2 text-sm border rounded-md h-24 resize-none"
+                    placeholder="Meeting notes, observations, follow-up..."
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={newNoteIncludeInAi}
+                    onChange={e => setNewNoteIncludeInAi(e.target.checked)}
+                    className="rounded border-slate-300 text-[#8C3A36] focus:ring-[#8C3A36]"
+                  />
+                  <span>Include this note in AI prompt when generating meal plans</span>
+                </label>
+                <button type="submit" disabled={savingNote || !newNoteContent.trim()} className="w-full py-2 bg-[#8C3A36] text-white font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#7a2f2b] text-sm">
+                  {savingNote ? <><Loader2 className="w-4 h-4 animate-spin"/> Saving...</> : 'Save note'}
+                </button>
+              </form>
+              <div className="space-y-2 max-h-64 overflow-y-auto pt-2 border-t border-slate-100">
+                {clientNotes.length === 0 ? (
+                  <p className="text-slate-400 text-sm py-2">No manual notes yet.</p>
+                ) : (
+                  clientNotes.map(note => (
+                    <div key={note.id} className="p-3 bg-slate-50 rounded-md border text-sm">
+                      <p className="text-slate-600 whitespace-pre-wrap">{note.content}</p>
+                      <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                        <span>{new Date(note.createdAt).toLocaleString()}</span>
+                        {note.includeInAiPrompt && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#F9F5F5] text-[#8C3A36] font-medium">Included in AI</span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         );
       case 'records':

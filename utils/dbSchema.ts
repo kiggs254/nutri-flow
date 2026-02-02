@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS public.clients (
     skeletal_muscle_percentage numeric,
     portal_access_token uuid UNIQUE DEFAULT uuid_generate_v4() NOT NULL,
     dietary_history text,
-    social_background text
+    social_background text,
+    group_name text
 );
 -- Performance index
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON public.clients(user_id);
@@ -52,6 +53,14 @@ BEGIN
                    AND column_name = 'social_background') THEN
         ALTER TABLE public.clients ADD COLUMN social_background text;
     END IF;
+    
+    -- Add group_name if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_schema = 'public' 
+                   AND table_name = 'clients' 
+                   AND column_name = 'group_name') THEN
+        ALTER TABLE public.clients ADD COLUMN group_name text;
+    END IF;
 END $$;
 
 -- (Create other tables if they don't exist, like invoices, appointments, etc.)
@@ -64,6 +73,8 @@ CREATE TABLE IF NOT EXISTS public.messages ( id uuid default uuid_generate_v4() 
 CREATE TABLE IF NOT EXISTS public.medical_documents ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, file_name text not null, file_path text not null unique );
 CREATE TABLE IF NOT EXISTS public.billing_settings ( id uuid default uuid_generate_v4() primary key, user_id uuid references auth.users(id) on delete cascade not null unique, currency text default 'USD' not null, paystack_public_key text, created_at timestamp with time zone default timezone('utc'::text, now()) not null );
 CREATE TABLE IF NOT EXISTS public.reminders ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, title text not null, message text not null, is_dismissed boolean default false not null, dismissed_at timestamp with time zone, is_automated boolean default false not null, frequency text, schedule_time time, schedule_days integer[], interval_hours integer, next_scheduled_at timestamp with time zone, parent_reminder_id uuid references public.reminders(id) on delete cascade, is_active boolean default true not null );
+CREATE TABLE IF NOT EXISTS public.client_notes ( id uuid PRIMARY KEY DEFAULT uuid_generate_v4(), client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE, content text NOT NULL, created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL, include_in_ai_prompt boolean DEFAULT false NOT NULL );
+CREATE INDEX IF NOT EXISTS idx_client_notes_client_id ON public.client_notes(client_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON public.reminders(client_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_dismissed ON public.reminders(client_id, is_dismissed);
 CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON public.reminders(next_scheduled_at) WHERE is_automated = true AND is_active = true AND is_dismissed = false;
@@ -94,6 +105,7 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.medical_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_notes ENABLE ROW LEVEL SECURITY;
 
 -- CRITICAL SECURITY FIX: Force RLS for table owners as well.
 ALTER TABLE public.clients FORCE ROW LEVEL SECURITY;
@@ -106,6 +118,7 @@ ALTER TABLE public.messages FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.medical_documents FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_settings FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.reminders FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.client_notes FORCE ROW LEVEL SECURITY;
 
 -- Drop ALL existing policies to ensure idempotency
 DROP POLICY IF EXISTS "Nutritionists can manage their own clients" ON public.clients;
@@ -118,6 +131,7 @@ DROP POLICY IF EXISTS "Nutritionists can manage client messages" ON public.messa
 DROP POLICY IF EXISTS "Nutritionists can manage client medical_documents" ON public.medical_documents;
 DROP POLICY IF EXISTS "Nutritionists can manage their own billing settings" ON public.billing_settings;
 DROP POLICY IF EXISTS "Nutritionists can manage client reminders" ON public.reminders;
+DROP POLICY IF EXISTS "Nutritionists can manage client notes" ON public.client_notes;
 
 -- Create new, strict policies for authenticated users
 CREATE POLICY "Nutritionists can manage their own clients" ON public.clients FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -130,6 +144,7 @@ CREATE POLICY "Nutritionists can manage client messages" ON public.messages FOR 
 CREATE POLICY "Nutritionists can manage client medical_documents" ON public.medical_documents FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 CREATE POLICY "Nutritionists can manage their own billing settings" ON public.billing_settings FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Nutritionists can manage client reminders" ON public.reminders FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
+CREATE POLICY "Nutritionists can manage client notes" ON public.client_notes FOR ALL TO authenticated USING (check_client_owner(client_id)) WITH CHECK (check_client_owner(client_id));
 
 
 -- 3. Secure RPC Functions for Client Portal (Anonymous Access)

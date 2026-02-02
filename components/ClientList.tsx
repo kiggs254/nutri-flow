@@ -1,11 +1,13 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Search, Plus, Loader2, RefreshCw, Database, Trash2, Check, Users, Mail, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { Client } from '../types';
 import { supabase } from '../services/supabase';
 import { SETUP_SQL } from '../utils/dbSchema';
 import { useToast } from '../utils/toast';
 import { ConfirmModal } from '../utils/confirmModal';
+
+const UNGROUPED_LABEL = 'Ungrouped';
 
 interface ClientListProps {
   clients: Client[];
@@ -14,14 +16,17 @@ interface ClientListProps {
   compact?: boolean;
   onSelectClient?: (client: Client) => void;
   selectedClientId?: string;
+  onUpdateClient?: (client: Client) => void;
 }
 
-const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, compact = false, onSelectClient, selectedClientId }) => {
+const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, compact = false, onSelectClient, selectedClientId, onUpdateClient }) => {
   const { showToast } = useToast();
   const [isTableMissing, setIsTableMissing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<string | null>(null);
-  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
@@ -35,6 +40,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     height: 170,
     goal: 'Weight Loss',
     customGoal: '',
+    groupName: '',
     bodyFatPercentage: '',
     bodyFatMass: '',
     skeletalMuscleMass: '',
@@ -46,6 +52,63 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     socialBackground: '',
   });
   const [submitting, setSubmitting] = useState(false);
+
+  const filteredClients = useMemo(() => {
+    if (!searchQuery.trim()) return clients;
+    const q = searchQuery.trim().toLowerCase();
+    return clients.filter(c => c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q));
+  }, [clients, searchQuery]);
+
+  const groups = useMemo(() => {
+    const map = new Map<string, Client[]>();
+    const ungrouped: Client[] = [];
+    filteredClients.forEach(c => {
+      const g = (c.groupName || '').trim() || null;
+      if (!g) ungrouped.push(c);
+      else {
+        if (!map.has(g)) map.set(g, []);
+        map.get(g)!.push(c);
+      }
+    });
+    const sortedNames = Array.from(map.keys()).sort();
+    return [
+      { name: UNGROUPED_LABEL, clients: ungrouped },
+      ...sortedNames.map(name => ({ name, clients: map.get(name)! })),
+    ].filter(g => g.clients.length > 0);
+  }, [filteredClients]);
+
+  const uniqueGroupNames = useMemo(() => {
+    const set = new Set<string>();
+    clients.forEach(c => {
+      const g = (c.groupName || '').trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort();
+  }, [clients]);
+
+  const toggleGroup = (groupName: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
+  };
+
+  const expandAll = () => setCollapsedGroups({});
+  const collapseAll = () => {
+    const next: Record<string, boolean> = {};
+    groups.forEach(g => { next[g.name] = true; });
+    setCollapsedGroups(next);
+  };
+
+  const handleGroupChange = async (client: Client, newGroupName: string) => {
+    const value = newGroupName === '' || newGroupName === UNGROUPED_LABEL ? null : newGroupName;
+    try {
+      const { error } = await supabase.from('clients').update({ group_name: value }).eq('id', client.id);
+      if (error) throw error;
+      const updated = { ...client, groupName: value ?? undefined };
+      onUpdateClient?.(updated);
+      onRefresh();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update group', 'error');
+    }
+  };
 
   // This effect checks for the table missing error, but doesn't fetch.
   useEffect(() => {
@@ -81,6 +144,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         height: newClient.height,
         goal: finalGoal,
         status: 'Active',
+        group_name: newClient.groupName?.trim() || null,
         body_fat_percentage: newClient.bodyFatPercentage ? parseFloat(newClient.bodyFatPercentage) : null,
         body_fat_mass: newClient.bodyFatMass ? parseFloat(newClient.bodyFatMass) : null,
         skeletal_muscle_mass: newClient.skeletalMuscleMass ? parseFloat(newClient.skeletalMuscleMass) : null,
@@ -98,7 +162,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       setShowAdvancedFields(false);
       setBodyFatFormat('kg');
       setMuscleMassFormat('kg');
-      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
+      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', groupName: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -176,78 +240,102 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
               <input 
                 type="text" 
                 placeholder="Search clients..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8C3A36] focus:border-[#8C3A36] outline-none transition-all"
               />
             </div>
+            {groups.length > 1 && (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={expandAll} className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded transition-colors">Expand all</button>
+                <button type="button" onClick={collapseAll} className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded transition-colors">Collapse all</button>
+              </div>
+            )}
             <button onClick={onRefresh} className="p-2 text-slate-500 hover:text-[#8C3A36] transition-colors self-start sm:self-auto">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         )}
 
-        {loading && clients.length === 0 ? (
+        {loading && clients.length === 0 && !searchQuery.trim() ? (
           <div className="p-8 sm:p-12 text-center text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-[#8C3A36]" />
             <p>Loading clients...</p>
           </div>
-        ) : clients.length === 0 ? (
+        ) : filteredClients.length === 0 ? (
           <div className="p-8 sm:p-12 text-center text-slate-500">
             <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Users className="w-6 h-6 text-slate-400" />
             </div>
-            <p>No clients found. Add your first client.</p>
+            <p>{searchQuery.trim() ? 'No clients match your search.' : 'No clients found. Add your first client.'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             {/* Mobile Card View */}
             <div className="block md:hidden divide-y divide-slate-100">
-              {clients.map(client => (
-                <div
-                  key={client.id}
-                  onClick={() => onSelectClient?.(client)}
-                  className={`p-4 transition-colors cursor-pointer ${
-                    selectedClientId === client.id ? 'bg-[#F9F5F5]' : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="relative flex-shrink-0">
-                        <img src={client.avatarUrl} alt={client.name} className="w-12 h-12 rounded-full object-cover bg-slate-200 border border-slate-200" />
-                        {selectedClientId === client.id && (
-                          <div className="absolute -right-1 -bottom-1 bg-[#8FAA41] text-white rounded-full p-0.5 border-2 border-white">
-                            <Check className="w-2 h-2" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-medium text-base truncate ${selectedClientId === client.id ? 'text-[#8C3A36]' : 'text-slate-900'}`}>
-                          {client.name}
-                        </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                          <Mail className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{client.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-                            ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                              client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
-                              'bg-slate-100 text-slate-800'}`}>
-                            {client.status}
-                          </span>
-                          <span className="text-xs text-slate-600 truncate">{client.goal}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={(e) => handleDeleteClient(e, client.id)}
-                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                      title="Delete Client"
+              {groups.map(({ name: groupName, clients: groupClients }) => {
+                const isCollapsed = collapsedGroups[groupName];
+                return (
+                  <div key={groupName}>
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(groupName)}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-left font-medium text-slate-700"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <span>{groupName}</span>
+                      <span className="text-xs text-slate-500">({groupClients.length})</span>
+                      {isCollapsed ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronUp className="w-4 h-4 flex-shrink-0" />}
                     </button>
+                    {!isCollapsed && groupClients.map(client => (
+                      <div
+                        key={client.id}
+                        onClick={() => onSelectClient?.(client)}
+                        className={`p-4 transition-colors cursor-pointer border-l-2 border-transparent ${
+                          selectedClientId === client.id ? 'bg-[#F9F5F5] border-[#8C3A36]' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="relative flex-shrink-0">
+                              <img src={client.avatarUrl} alt={client.name} className="w-12 h-12 rounded-full object-cover bg-slate-200 border border-slate-200" />
+                              {selectedClientId === client.id && (
+                                <div className="absolute -right-1 -bottom-1 bg-[#8FAA41] text-white rounded-full p-0.5 border-2 border-white">
+                                  <Check className="w-2 h-2" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className={`font-medium text-base truncate ${selectedClientId === client.id ? 'text-[#8C3A36]' : 'text-slate-900'}`}>
+                                {client.name}
+                              </div>
+                              <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                <Mail className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate">{client.email}</span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                  ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                                    client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                    'bg-slate-100 text-slate-800'}`}>
+                                  {client.status}
+                                </span>
+                                <span className="text-xs text-slate-600 truncate">{client.goal}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={(e) => handleDeleteClient(e, client.id)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            title="Delete Client"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             
             {/* Desktop Table View */}
@@ -255,6 +343,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-medium">
                 <tr>
                   <th className="px-6 py-4">Name</th>
+                  <th className="px-6 py-4">Group</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Goal</th>
                   <th className="px-6 py-4">Last Check-in</th>
@@ -262,58 +351,90 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {clients.map(client => (
-                  <tr 
-                    key={client.id} 
-                    onClick={() => onSelectClient?.(client)}
-                    className={`
-                      group transition-colors cursor-pointer
-                      ${selectedClientId === client.id ? 'bg-[#F9F5F5]' : 'hover:bg-slate-50'}
-                    `}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <img src={client.avatarUrl} alt={client.name} className="w-10 h-10 rounded-full object-cover bg-slate-200 border border-slate-200" />
-                          {selectedClientId === client.id && (
-                            <div className="absolute -right-1 -bottom-1 bg-[#8FAA41] text-white rounded-full p-0.5 border-2 border-white">
-                              <Check className="w-2 h-2" />
+                {groups.map(({ name: groupName, clients: groupClients }) => {
+                  const isCollapsed = collapsedGroups[groupName];
+                  return (
+                    <React.Fragment key={groupName}>
+                      <tr className="bg-slate-100">
+                        <td colSpan={6} className="px-6 py-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(groupName)}
+                            className="w-full flex items-center gap-2 font-medium text-slate-700 hover:text-slate-900"
+                          >
+                            {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                            <span>{groupName}</span>
+                            <span className="text-xs font-normal text-slate-500">({groupClients.length})</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {!isCollapsed && groupClients.map(client => (
+                        <tr 
+                          key={client.id} 
+                          onClick={() => onSelectClient?.(client)}
+                          className={`
+                            group transition-colors cursor-pointer
+                            ${selectedClientId === client.id ? 'bg-[#F9F5F5]' : 'hover:bg-slate-50'}
+                          `}
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <img src={client.avatarUrl} alt={client.name} className="w-10 h-10 rounded-full object-cover bg-slate-200 border border-slate-200" />
+                                {selectedClientId === client.id && (
+                                  <div className="absolute -right-1 -bottom-1 bg-[#8FAA41] text-white rounded-full p-0.5 border-2 border-white">
+                                    <Check className="w-2 h-2" />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <div className={`font-medium ${selectedClientId === client.id ? 'text-[#8C3A36]' : 'text-slate-900'}`}>
+                                  {client.name}
+                                </div>
+                                <div className="text-xs text-slate-500 flex items-center gap-1">
+                                  <Mail className="w-3 h-3" /> {client.email}
+                                </div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                        <div>
-                          <div className={`font-medium ${selectedClientId === client.id ? 'text-[#8C3A36]' : 'text-slate-900'}`}>
-                            {client.name}
-                          </div>
-                          <div className="text-xs text-slate-500 flex items-center gap-1">
-                            <Mail className="w-3 h-3" /> {client.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                        ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                          client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-slate-100 text-slate-800'}`}>
-                        {client.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{client.goal}</td>
-                    <td className="px-6 py-4 text-sm text-slate-500">
-                       {client.lastCheckIn}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={(e) => handleDeleteClient(e, client.id)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                        title="Delete Client"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                          </td>
+                          <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                            <select
+                              value={client.groupName || ''}
+                              onChange={e => handleGroupChange(client, e.target.value)}
+                              className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white min-w-[120px]"
+                            >
+                              <option value="">{UNGROUPED_LABEL}</option>
+                              {uniqueGroupNames.map(g => (
+                                <option key={g} value={g}>{g}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                              ${client.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                                client.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                'bg-slate-100 text-slate-800'}`}>
+                              {client.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600">{client.goal}</td>
+                          <td className="px-6 py-4 text-sm text-slate-500">
+                             {client.lastCheckIn}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button 
+                              onClick={(e) => handleDeleteClient(e, client.id)}
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                              title="Delete Client"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -447,6 +568,16 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                             />
                         )}
                     </div>
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-700 uppercase">Group</label>
+                   <input 
+                     type="text" 
+                     className="w-full p-2 border border-slate-300 rounded-lg" 
+                     value={newClient.groupName} 
+                     onChange={e => setNewClient({...newClient, groupName: e.target.value})}
+                     placeholder="e.g., Weight loss batch 1"
+                   />
                 </div>
                 <div className="space-y-1">
                    <label className="text-xs font-bold text-slate-700 uppercase">Goal</label>
