@@ -251,42 +251,145 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                </div>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6">
-               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-900">Quick Client Access</h3>
-                    <button onClick={() => { setActiveTab('clients'); setViewState('list');}} className="text-[#8C3A36] text-sm font-medium hover:underline">View All</button>
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900">Recent Clients</h3>
+                    <p className="text-xs text-slate-500">Jump back in without a scrolling list.</p>
                   </div>
-                  <ClientList 
-                    clients={clients}
-                    loading={clientsLoading}
-                    compact 
-                    onSelectClient={handleClientSelect}
-                    selectedClientId={selectedClient?.id}
-                    onRefresh={fetchClients}
-                    onUpdateClient={handleUpdateClient}
-                  />
-               </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('clients'); setViewState('list'); }}
+                      className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
+                    >
+                      View all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fetchClients}
+                      className="px-3 py-2 rounded-lg bg-[#8C3A36] text-white text-sm font-medium hover:bg-[#7a2f2b]"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </div>
 
-               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-slate-900 mb-4">Recent Activity</h3>
-                  <div className="space-y-4">
-                     {notifications.slice(0, 3).map(n => (
-                        <div key={n.id} className="flex gap-3 items-start pb-3 border-b border-slate-50 last:border-0">
-                           <div className="w-8 h-8 rounded-full bg-[#F9F5F5] flex items-center justify-center flex-shrink-0 mt-1">
-                           <MessageCircle className="w-4 h-4 text-[#8C3A36]" />
-                           </div>
-                           <div>
-                           <p className="text-sm text-slate-800">New message from <span className="font-bold">{n.clientName}</span></p>
-                           <p className="text-xs text-slate-500 line-clamp-1">{n.content}</p>
-                           </div>
-                        </div>
-                     ))}
-                     {notifications.length === 0 && (
-                        <div className="text-center text-slate-400 py-4 text-sm">No new activity.</div>
-                     )}
+                <div className="p-4">
+                  {clientsLoading ? (
+                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="h-[92px] rounded-xl border border-slate-200 bg-slate-50 animate-pulse" />
+                      ))}
+                    </div>
+                  ) : clients.length === 0 ? (
+                    <div className="text-center py-10">
+                      <div className="text-slate-900 font-bold">No clients yet</div>
+                      <div className="text-sm text-slate-500 mt-1">Go to Clients to add your first client.</div>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('clients'); setViewState('list'); }}
+                        className="mt-4 px-4 py-2 rounded-lg bg-[#8C3A36] text-white font-semibold hover:bg-[#7a2f2b]"
+                      >
+                        Open Clients
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {clients.slice(0, 6).map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleClientSelect(c)}
+                          className={`text-left rounded-xl border p-4 hover:shadow-sm transition-all bg-white ${
+                            selectedClient?.id === c.id ? 'border-[#8C3A36] ring-2 ring-[#8C3A36]/10' : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={c.avatarUrl}
+                              alt={c.name}
+                              className="w-10 h-10 rounded-full object-cover bg-slate-100 border border-slate-200 flex-shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-bold text-slate-900 truncate">{c.name}</div>
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
+                                    c.status === 'Active'
+                                      ? 'bg-green-100 text-green-800'
+                                      : c.status === 'Pending'
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-slate-100 text-slate-700'
+                                  }`}
+                                >
+                                  {c.status}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500 truncate mt-0.5">{c.goal}</div>
+                              <div className="text-[11px] text-slate-400 mt-1">
+                                Last check-in: <span className="text-slate-500">{c.lastCheckIn}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 grid sm:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('clients'); setViewState('list'); }}
+                      className="px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold"
+                    >
+                      Add / manage clients
+                      <div className="text-xs font-normal text-slate-500 mt-1">Onboard, group, and update profiles.</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('planner')}
+                      className="px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold"
+                    >
+                      Generate meal plan
+                      <div className="text-xs font-normal text-slate-500 mt-1">
+                        {selectedClient ? `Using ${selectedClient.name}` : 'Select a client first.'}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('progress')}
+                      className="px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold"
+                    >
+                      Log progress
+                      <div className="text-xs font-normal text-slate-500 mt-1">
+                        {selectedClient ? `Using ${selectedClient.name}` : 'Select a client first.'}
+                      </div>
+                    </button>
                   </div>
-               </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-900 mb-4">Recent Activity</h3>
+                <div className="space-y-4">
+                  {notifications.slice(0, 3).map(n => (
+                    <div key={n.id} className="flex gap-3 items-start pb-3 border-b border-slate-50 last:border-0">
+                      <div className="w-8 h-8 rounded-full bg-[#F9F5F5] flex items-center justify-center flex-shrink-0 mt-1">
+                        <MessageCircle className="w-4 h-4 text-[#8C3A36]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-800">New message from <span className="font-bold">{n.clientName}</span></p>
+                        <p className="text-xs text-slate-500 line-clamp-2">{n.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {notifications.length === 0 && (
+                    <div className="text-center text-slate-400 py-4 text-sm">No new activity.</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         );
