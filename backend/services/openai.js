@@ -145,6 +145,7 @@ export async function callOpenAI({
   userPrompt,
   imageBase64,
   mimeType,
+  imageParts, // Array of { data, mimeType } for multiple reference images
   fileId, // New parameter for OpenAI Files API file_id
   jsonMode = false,
   temperature = 0.7,
@@ -171,7 +172,19 @@ export async function callOpenAI({
       ]
     });
   }
-  // Handle images and PDFs sent as base64
+  // Handle multiple images (imageParts takes precedence)
+  else if (imageParts && imageParts.length > 0) {
+    const content = [{ type: 'text', text: userPrompt }];
+    for (const part of imageParts) {
+      const mt = part.mimeType || 'image/png';
+      const isImage = mt.startsWith('image/') || ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mt);
+      if (isImage) {
+        content.push({ type: 'image_url', image_url: { url: `data:${mt};base64,${part.data}` } });
+      }
+    }
+    messages.push({ role: 'user', content });
+  }
+  // Handle single image sent as base64
   else if (imageBase64 && mimeType) {
     const isImageType = (
       mimeType.startsWith('image/') ||
@@ -184,7 +197,6 @@ export async function callOpenAI({
     const isPDF = mimeType === 'application/pdf';
 
     if (isImageType) {
-      // Send images using image_url format
       messages.push({
         role: 'user',
         content: [
@@ -196,12 +208,10 @@ export async function callOpenAI({
         ]
       });
     } else {
-      // For other non-image files sent as base64, send as text
       const fullPrompt = `${userPrompt}\n\n[Note: Document file was uploaded but text extraction is required for full analysis. Please analyze based on the provided context.]`;
       messages.push({ role: 'user', content: fullPrompt });
     }
   } else {
-    // Regular text content
     messages.push({ role: 'user', content: userPrompt });
   }
 

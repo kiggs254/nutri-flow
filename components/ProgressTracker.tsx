@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingDown, TrendingUp, Activity, Plus, Calendar, Scale, CheckCircle, Droplet, Dumbbell } from 'lucide-react';
+import { TrendingDown, TrendingUp, Activity, Plus, Calendar, Scale, CheckCircle, Droplet, Dumbbell, ChevronDown, ChevronUp } from 'lucide-react';
 import { Client, ProgressLog } from '../types';
 import { supabase } from '../services/supabase';
 import { useToast } from '../utils/toast';
@@ -14,6 +14,7 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
   const [logs, setLogs] = useState<ProgressLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   
   // Form State
   const [newLogBodyFatFormat, setNewLogBodyFatFormat] = useState<'percentage' | 'kg'>('kg');
@@ -27,6 +28,9 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
     bodyFatMass: '',
     skeletalMuscleMass: '',
     skeletalMusclePercentage: '',
+    bmr: '',
+    metabolicAge: '',
+    visceralFat: '',
   });
 
   useEffect(() => {
@@ -37,6 +41,9 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
       const lastFatMass = selectedClient.bodyFatMass?.toString() || '';
       const lastMuscleMass = selectedClient.skeletalMuscleMass?.toString() || '';
       const lastMusclePercent = selectedClient.skeletalMusclePercentage?.toString() || '';
+      const lastBmr = selectedClient.bmr?.toString() || '';
+      const lastMetabolicAge = selectedClient.metabolicAge?.toString() || '';
+      const lastVisceralFat = selectedClient.visceralFat?.toString() || '';
 
       setNewLog(prev => ({
         ...prev, 
@@ -44,7 +51,10 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
         bodyFatPercentage: lastFatPercent, 
         bodyFatMass: lastFatMass,
         skeletalMuscleMass: lastMuscleMass,
-        skeletalMusclePercentage: lastMusclePercent
+        skeletalMusclePercentage: lastMusclePercent,
+        bmr: lastBmr,
+        metabolicAge: lastMetabolicAge,
+        visceralFat: lastVisceralFat,
       }));
 
       // Set formats based on available data (default to kg)
@@ -76,7 +86,10 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
           bodyFatPercentage: l.body_fat_percentage,
           bodyFatMass: l.body_fat_mass,
           skeletalMuscleMass: l.skeletal_muscle_mass,
-          skeletalMusclePercentage: l.skeletal_muscle_percentage
+          skeletalMusclePercentage: l.skeletal_muscle_percentage,
+          bmr: l.bmr,
+          metabolicAge: l.metabolic_age,
+          visceralFat: l.visceral_fat,
         })));
       }
     } catch (e) {
@@ -101,12 +114,16 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
         body_fat_mass: newLog.bodyFatMass ? parseFloat(newLog.bodyFatMass) : null,
         skeletal_muscle_mass: newLog.skeletalMuscleMass ? parseFloat(newLog.skeletalMuscleMass) : null,
         skeletal_muscle_percentage: newLog.skeletalMusclePercentage ? parseFloat(newLog.skeletalMusclePercentage) : null,
+        bmr: newLog.bmr ? parseFloat(newLog.bmr) : null,
+        metabolic_age: newLog.metabolicAge ? parseInt(newLog.metabolicAge) : null,
+        visceral_fat: newLog.visceralFat ? parseFloat(newLog.visceralFat) : null,
       });
 
       if (error) throw error;
 
       setShowAddModal(false);
-      setNewLog({ date: new Date().toISOString().split('T')[0], weight: '', complianceScore: 80, notes: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '' });
+      setShowAdvancedFields(false);
+      setNewLog({ date: new Date().toISOString().split('T')[0], weight: '', complianceScore: 80, notes: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', bmr: '', metabolicAge: '', visceralFat: '' });
       fetchLogs();
     } catch (e: any) {
       showToast("Error adding log: " + e.message, 'error');
@@ -354,6 +371,21 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
                       {log.skeletalMusclePercentage.toFixed(1)}% muscle
                     </span>
                   )}
+                  {log.bmr != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                      BMR: {Number(log.bmr).toFixed(0)} kcal/day
+                    </span>
+                  )}
+                  {log.metabolicAge != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                      Metabolic age: {Number(log.metabolicAge).toFixed(0)} yrs
+                    </span>
+                  )}
+                  {log.visceralFat != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                      Visceral fat: {Number(log.visceralFat).toFixed(1)} level
+                    </span>
+                  )}
                   {log.complianceScore != null && (
                     <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">
                       Compliance: {log.complianceScore}%
@@ -513,6 +545,56 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ selectedClient }) => 
                        onChange={e => setNewLog({...newLog, notes: e.target.value})}
                     />
                  </div>
+
+                 <button
+                   type="button"
+                   onClick={() => setShowAdvancedFields(!showAdvancedFields)}
+                   className="w-full py-2 border-2 border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                 >
+                   {showAdvancedFields ? 'Hide' : 'Show'} Advanced Fields
+                   {showAdvancedFields ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                 </button>
+
+                 {showAdvancedFields && (
+                   <div className="space-y-3 pt-2 border-t border-slate-200">
+                     <h4 className="text-xs font-bold text-slate-600 uppercase">Advanced Metrics (Optional)</h4>
+                     <div className="grid grid-cols-3 gap-3">
+                       <div>
+                         <label className="text-xs font-bold text-slate-700 uppercase">BMR</label>
+                         <input
+                           type="number"
+                           step="1"
+                           placeholder="kcal/day"
+                           className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                           value={newLog.bmr}
+                           onChange={e => setNewLog({ ...newLog, bmr: e.target.value })}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-xs font-bold text-slate-700 uppercase">Metabolic Age</label>
+                         <input
+                           type="number"
+                           step="1"
+                           placeholder="years"
+                           className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                           value={newLog.metabolicAge}
+                           onChange={e => setNewLog({ ...newLog, metabolicAge: e.target.value })}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-xs font-bold text-slate-700 uppercase">Visceral Fat</label>
+                         <input
+                           type="number"
+                           step="0.1"
+                           placeholder="level"
+                           className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                           value={newLog.visceralFat}
+                           onChange={e => setNewLog({ ...newLog, visceralFat: e.target.value })}
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 )}
                  <button className="w-full bg-[#8C3A36] text-white font-bold py-3 rounded-lg hover:bg-[#7a2f2b] transition-colors">
                     Save Log
                  </button>

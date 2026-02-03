@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS public.clients (
     portal_access_token uuid UNIQUE DEFAULT uuid_generate_v4() NOT NULL,
     dietary_history text,
     social_background text,
+    bmr numeric,
+    metabolic_age integer,
+    visceral_fat numeric,
     group_name text,
     group_id uuid REFERENCES public.client_groups(id) ON DELETE SET NULL
 );
@@ -63,6 +66,30 @@ BEGIN
                    AND column_name = 'social_background') THEN
         ALTER TABLE public.clients ADD COLUMN social_background text;
     END IF;
+
+    -- Add bmr if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                   AND table_name = 'clients'
+                   AND column_name = 'bmr') THEN
+        ALTER TABLE public.clients ADD COLUMN bmr numeric;
+    END IF;
+
+    -- Add metabolic_age if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                   AND table_name = 'clients'
+                   AND column_name = 'metabolic_age') THEN
+        ALTER TABLE public.clients ADD COLUMN metabolic_age integer;
+    END IF;
+
+    -- Add visceral_fat if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                   AND table_name = 'clients'
+                   AND column_name = 'visceral_fat') THEN
+        ALTER TABLE public.clients ADD COLUMN visceral_fat numeric;
+    END IF;
     
     -- Add group_name if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
@@ -86,7 +113,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS public.invoices ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, amount numeric not null, currency text default 'USD', status text default 'Pending', due_date timestamp with time zone, items jsonb, payment_method text, transaction_ref text );
 CREATE TABLE IF NOT EXISTS public.appointments ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, date timestamp with time zone not null, type text not null, status text default 'Scheduled', notes text );
 CREATE TABLE IF NOT EXISTS public.food_logs ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, ai_analysis text, image_url text, notes text );
-CREATE TABLE IF NOT EXISTS public.progress_logs ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade, created_at timestamp with time zone default now(), date date not null, weight numeric not null, compliance_score integer, notes text, body_fat_percentage numeric, skeletal_muscle_mass numeric, body_fat_mass numeric, skeletal_muscle_percentage numeric );
+CREATE TABLE IF NOT EXISTS public.progress_logs ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade, created_at timestamp with time zone default now(), date date not null, weight numeric not null, compliance_score integer, notes text, body_fat_percentage numeric, skeletal_muscle_mass numeric, body_fat_mass numeric, skeletal_muscle_percentage numeric, bmr numeric, metabolic_age integer, visceral_fat numeric );
 CREATE TABLE IF NOT EXISTS public.meal_plans ( id uuid not null default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone not null default now(), plan_data jsonb, day_label text );
 CREATE TABLE IF NOT EXISTS public.messages ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, sender text not null check (sender in ('client', 'nutritionist')), content text not null, is_read boolean default false );
 CREATE TABLE IF NOT EXISTS public.medical_documents ( id uuid default uuid_generate_v4() primary key, client_id uuid references public.clients(id) on delete cascade not null, created_at timestamp with time zone default timezone('utc'::text, now()) not null, file_name text not null, file_path text not null unique );

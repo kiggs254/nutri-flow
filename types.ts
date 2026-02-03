@@ -44,6 +44,14 @@ export interface Client {
   bodyFatMass?: number;
   skeletalMuscleMass?: number;
   skeletalMusclePercentage?: number;
+
+  // Metabolic metrics (optional)
+  /** Basal Metabolic Rate (kcal/day). */
+  bmr?: number;
+  /** Metabolic age (years). */
+  metabolicAge?: number;
+  /** Visceral fat level/score (unitless). */
+  visceralFat?: number;
 }
 
 export interface Meal {
@@ -90,6 +98,11 @@ export interface ProgressLog {
   bodyFatMass?: number;
   skeletalMuscleMass?: number;
   skeletalMusclePercentage?: number;
+
+  // Metabolic metrics (optional)
+  bmr?: number;
+  metabolicAge?: number;
+  visceralFat?: number;
 }
 
 export interface ClientNote {
@@ -177,12 +190,23 @@ export interface MealGenParams {
   preferences: string;
   activityLevel: string;
   customInstructions?: string;
+  // Metabolic metrics (optional)
+  bmr?: number;
+  metabolicAge?: number;
+  visceralFat?: number;
+  /** Single reference image (legacy). Prefer referenceDataArray for multiple. */
   referenceData?: {
     inlineData: {
       data: string;
       mimeType: string;
     }
   };
+  /** Multiple reference images (e.g. past meal plan photos). */
+  referenceDataArray?: {
+    inlineData: { data: string; mimeType: string };
+  }[];
+  /** Past meal plans (saved plans) as JSON reference for style/structure. */
+  referencePlans?: DailyPlan[][];
   // New fields from profile
   medicalHistory?: string;
   medications?: string;

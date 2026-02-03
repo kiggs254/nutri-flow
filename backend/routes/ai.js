@@ -141,8 +141,12 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     Client Profile:
     - Age: ${params.age} y/o ${params.gender}
     - Current Metrics: ${params.weight}kg, ${params.height}cm
+    - Metabolic Metrics (if provided): BMR ${params.bmr ?? 'Not provided'} kcal/day, Metabolic Age ${params.metabolicAge ?? 'Not provided'} yrs, Visceral Fat (level) ${params.visceralFat ?? 'Not provided'}
     - Primary Goal: ${params.goal}
     - Activity Level: ${params.activityLevel}
+
+    Nutrition target instruction:
+    - make an estimate of the calories needed per day as per the metrics given especially the BMR and give a surplus or deficit as per the goal indicated in the records and notes.
 
     Critical Health Information (MUST BE CONSIDERED):
     - Medical History: ${params.medicalHistory || 'None provided.'}
@@ -163,7 +167,8 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     Nutritionist notes (use for meal planning):
     - ${params.nutritionistNotes || 'None.'}
     
-    ${params.referenceData ? "An image has been attached as reference material." : ""}
+    ${(params.referenceData || (params.referenceDataArray && params.referenceDataArray.length > 0)) ? "Reference image(s) have been attached." : ""}
+    ${params.referencePlans && params.referencePlans.length > 0 ? `\n\nThe following past meal plans are provided as reference (use for style, structure, and ideas; adapt to the current client):\n${JSON.stringify(params.referencePlans)}\n` : ''}
     
     Generate a 7-day (Mon-Sun) meal plan based on ALL the above information.${
       excludedMeals.length > 0
@@ -269,6 +274,11 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
       if (params.referenceData) {
         parts.push(params.referenceData);
       }
+      if (params.referenceDataArray && params.referenceDataArray.length > 0) {
+        for (const ref of params.referenceDataArray) {
+          parts.push(ref);
+        }
+      }
 
       resultText = await callGemini({
         systemInstruction,
@@ -300,12 +310,19 @@ JSON OUTPUT FORMAT (MANDATORY):
 - REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
 `;
 
-      let imageBase64;
-      let mimeType;
+      const imageParts = [];
       if (params.referenceData) {
-        imageBase64 = params.referenceData.inlineData.data;
-        mimeType = params.referenceData.inlineData.mimeType;
+        imageParts.push({ data: params.referenceData.inlineData.data, mimeType: params.referenceData.inlineData.mimeType });
       }
+      if (params.referenceDataArray && params.referenceDataArray.length > 0) {
+        for (const ref of params.referenceDataArray) {
+          if (ref && ref.inlineData) {
+            imageParts.push({ data: ref.inlineData.data, mimeType: ref.inlineData.mimeType });
+          }
+        }
+      }
+      const imageBase64 = imageParts.length > 0 ? imageParts[0].data : undefined;
+      const mimeType = imageParts.length > 0 ? imageParts[0].mimeType : undefined;
 
       if (provider === 'openai') {
         resultText = await callOpenAI({
@@ -313,6 +330,7 @@ JSON OUTPUT FORMAT (MANDATORY):
           userPrompt,
           imageBase64,
           mimeType,
+          imageParts: imageParts.length > 0 ? imageParts : undefined,
           jsonMode: true,
           model: 'gpt-4o',
           temperature: 0.7,
@@ -324,6 +342,7 @@ JSON OUTPUT FORMAT (MANDATORY):
           userPrompt,
           imageBase64,
           mimeType,
+          imageParts: imageParts.length > 0 ? imageParts : undefined,
           jsonMode: true,
           temperature: 0.7,
           maxTokens: 4096
@@ -485,8 +504,12 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     Client Profile:
     - Age: ${params.age} y/o ${params.gender}
     - Current Metrics: ${params.weight}kg, ${params.height}cm
+    - Metabolic Metrics (if provided): BMR ${params.bmr ?? 'Not provided'} kcal/day, Metabolic Age ${params.metabolicAge ?? 'Not provided'} yrs, Visceral Fat (level) ${params.visceralFat ?? 'Not provided'}
     - Primary Goal: ${params.goal}
     - Activity Level: ${params.activityLevel}
+
+    Nutrition target instruction:
+    - make an estimate of the calories needed per day as per the metrics given especially the BMR and give a surplus or deficit as per the goal indicated in the records and notes.
 
     Records (MUST BE CONSIDERED):
     - Medical History: ${params.medicalHistory || 'None provided.'}

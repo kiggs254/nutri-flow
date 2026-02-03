@@ -51,6 +51,7 @@ export async function callDeepSeek({
   userPrompt,
   imageBase64,
   mimeType,
+  imageParts, // Array of { data, mimeType } for multiple reference images
   jsonMode = false,
   temperature = 0.7,
   maxTokens = 4096
@@ -63,7 +64,14 @@ export async function callDeepSeek({
 
   const messages = [{ role: 'system', content: systemPrompt }];
 
-  if (imageBase64 && mimeType) {
+  if (imageParts && imageParts.length > 0) {
+    const content = [{ type: 'text', text: userPrompt }];
+    for (const part of imageParts) {
+      const mt = part.mimeType || 'image/png';
+      content.push({ type: 'image_url', image_url: { url: `data:${mt};base64,${part.data}` } });
+    }
+    messages.push({ role: 'user', content });
+  } else if (imageBase64 && mimeType) {
     messages.push({
       role: 'user',
       content: [

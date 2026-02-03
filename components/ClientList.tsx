@@ -50,6 +50,9 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
     bodyFatMass: '',
     skeletalMuscleMass: '',
     skeletalMusclePercentage: '',
+    bmr: '',
+    metabolicAge: '',
+    visceralFat: '',
     medicalHistory: '',
     allergies: '',
     medications: '',
@@ -205,6 +208,9 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
         body_fat_mass: newClient.bodyFatMass ? parseFloat(newClient.bodyFatMass) : null,
         skeletal_muscle_mass: newClient.skeletalMuscleMass ? parseFloat(newClient.skeletalMuscleMass) : null,
         skeletal_muscle_percentage: newClient.skeletalMusclePercentage ? parseFloat(newClient.skeletalMusclePercentage) : null,
+        bmr: newClient.bmr ? parseFloat(newClient.bmr) : null,
+        metabolic_age: newClient.metabolicAge ? parseInt(newClient.metabolicAge) : null,
+        visceral_fat: newClient.visceralFat ? parseFloat(newClient.visceralFat) : null,
         medical_history: newClient.medicalHistory || null,
         allergies: newClient.allergies || null,
         medications: newClient.medications || null,
@@ -218,7 +224,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
       setShowAdvancedFields(false);
       setBodyFatFormat('kg');
       setMuscleMassFormat('kg');
-      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', groupId: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
+      setNewClient({ name: '', email: '', age: 30, weight: 70, height: 170, goal: 'Weight Loss', customGoal: '', groupId: '', bodyFatPercentage: '', bodyFatMass: '', skeletalMuscleMass: '', skeletalMusclePercentage: '', bmr: '', metabolicAge: '', visceralFat: '', medicalHistory: '', allergies: '', medications: '', dietaryHistory: '', socialBackground: '' });
       onRefresh(); // Refresh clients list in parent
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -692,6 +698,41 @@ const ClientList: React.FC<ClientListProps> = ({ clients, loading, onRefresh, co
                 {showAdvancedFields && (
                   <div className="space-y-3 pt-2 border-t border-slate-200">
                     <h4 className="text-xs font-bold text-slate-600 uppercase">Records Information (Optional)</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 uppercase">BMR</label>
+                        <input
+                          type="number"
+                          step="1"
+                          placeholder="kcal/day"
+                          className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                          value={newClient.bmr}
+                          onChange={e => setNewClient({ ...newClient, bmr: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 uppercase">Metabolic Age</label>
+                        <input
+                          type="number"
+                          step="1"
+                          placeholder="years"
+                          className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                          value={newClient.metabolicAge}
+                          onChange={e => setNewClient({ ...newClient, metabolicAge: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 uppercase">Visceral Fat</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="level"
+                          className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                          value={newClient.visceralFat}
+                          onChange={e => setNewClient({ ...newClient, visceralFat: e.target.value })}
+                        />
+                      </div>
+                    </div>
                     <div>
                       <label className="text-xs font-bold text-slate-700 uppercase">Medical History</label>
                       <textarea 

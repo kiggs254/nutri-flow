@@ -83,7 +83,8 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   const [savedPlans, setSavedPlans] = useState<SavedMealPlan[]>([]);
   const [saving, setSaving] = useState(false);
   const [planLabel, setPlanLabel] = useState(`Plan - ${new Date().toLocaleDateString()}`);
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [referencePlanIds, setReferencePlanIds] = useState<string[]>([]);
   const [expandedDayIndex, setExpandedDayIndex] = useState<number | null>(0);
   const [showShoppingList, setShowShoppingList] = useState(false);
   const [planAnalytics, setPlanAnalytics] = useState<{
@@ -111,6 +112,9 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         medications: selectedClient.medications || '',
         dietaryHistory: selectedClient.dietaryHistory || '',
         socialBackground: selectedClient.socialBackground || '',
+        bmr: selectedClient.bmr,
+        metabolicAge: selectedClient.metabolicAge,
+        visceralFat: selectedClient.visceralFat,
         customInstructions: '',
         excludeMeals: [] as ('breakfast' | 'lunch' | 'dinner' | 'snacks')[],
       };
@@ -119,6 +123,8 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
       setPlan(null);
       setError(null);
       setLoading(false);
+      setReferenceFiles([]);
+      setReferencePlanIds([]);
 
       (async () => {
         const { data } = await supabase
@@ -206,7 +212,12 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     setExpandedDayIndex(null);
 
     let finalParams = { ...params };
-    
+
+    const referencePlans = referencePlanIds.length > 0
+      ? savedPlans.filter(p => referencePlanIds.includes(p.id)).map(p => p.planData)
+      : undefined;
+    if (referencePlans?.length) finalParams.referencePlans = referencePlans;
+
     const executeGeneration = async (genParams: MealGenParams) => {
         try {
             const result = await generateMealPlan(genParams);
@@ -220,15 +231,26 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         }
     };
 
-    if (referenceFile) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64String = (reader.result as string).split(',')[1];
-            finalParams.referenceData = { inlineData: { data: base64String, mimeType: referenceFile.type } };
-            executeGeneration(finalParams);
-        };
-        reader.onerror = () => { setError("Could not read the reference file."); setLoading(false); };
-        reader.readAsDataURL(referenceFile);
+    if (referenceFiles.length > 0) {
+        const readers = referenceFiles.map(file => {
+            return new Promise<{ data: string; mimeType: string }>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const result = reader.result as string;
+                    const base64 = result?.split(',')[1];
+                    if (base64) resolve({ data: base64, mimeType: file.type });
+                    else reject(new Error('Could not read file'));
+                };
+                reader.onerror = () => reject(new Error('Could not read the reference file.'));
+                reader.readAsDataURL(file);
+            });
+        });
+        Promise.all(readers)
+            .then(items => {
+                finalParams.referenceDataArray = items.map(item => ({ inlineData: item }));
+                executeGeneration(finalParams);
+            })
+            .catch(e => { setError(e.message || "Could not read reference files."); setLoading(false); });
     } else {
         executeGeneration(finalParams);
     }
@@ -558,14 +580,60 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
               </p>
             </div>
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Reference Image (Optional)</label>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Reference images (optional)</label>
               <div className="relative border border-dashed border-slate-300 rounded-lg p-3 text-center hover:bg-slate-50">
-                  <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => e.target.files && setReferenceFile(e.target.files[0])} />
-                  <div className={`flex items-center justify-center gap-2 text-sm ${referenceFile ? 'text-[#8C3A36]' : 'text-slate-500'}`}>
-                    <Upload className="w-4 h-4" /> <span>{referenceFile ? referenceFile.name : "Upload image..."}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={e => {
+                      const files = e.target.files;
+                      if (files?.length) setReferenceFiles(prev => [...prev, ...Array.from(files)]);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className={`flex items-center justify-center gap-2 text-sm ${referenceFiles.length ? 'text-[#8C3A36]' : 'text-slate-500'}`}>
+                    <Upload className="w-4 h-4 flex-shrink-0" />
+                    <span>{referenceFiles.length ? `${referenceFiles.length} file(s) selected` : "Upload image(s)..."}</span>
                   </div>
               </div>
+              {referenceFiles.length > 0 && (
+                <ul className="mt-2 space-y-1 max-h-24 overflow-y-auto">
+                  {referenceFiles.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 text-xs bg-slate-50 rounded px-2 py-1">
+                      <span className="truncate">{f.name}</span>
+                      <button type="button" onClick={() => setReferenceFiles(prev => prev.filter((_, j) => j !== i))} className="p-0.5 text-slate-400 hover:text-red-600 rounded">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+            {savedPlans.length > 0 && (
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-wider">Use saved plans as reference (optional)</label>
+                <p className="text-xs text-slate-500 mb-2">AI will use these plans for style and structure.</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {savedPlans.map(p => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={referencePlanIds.includes(p.id)}
+                        onChange={e => {
+                          if (e.target.checked) setReferencePlanIds(prev => [...prev, p.id]);
+                          else setReferencePlanIds(prev => prev.filter(id => id !== p.id));
+                        }}
+                        className="rounded border-slate-300 text-[#8C3A36] focus:ring-[#8C3A36]"
+                      />
+                      <span className="truncate">{p.label}</span>
+                      <span className="text-xs text-slate-400 flex-shrink-0">{new Date(p.createdAt).toLocaleDateString()}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {params.nutritionistNotes?.trim() && (
               <p className="text-xs text-slate-600 bg-[#F9F5F5] border border-[#8C3A36]/20 rounded-lg px-3 py-2">
                 Client notes marked &quot;Include in AI prompt&quot; are included in this plan.

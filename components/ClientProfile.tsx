@@ -201,6 +201,7 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
   
   // Progress Logging State
   const [showProgressLogModal, setShowProgressLogModal] = useState(false);
+  const [showAdvancedProgressFields, setShowAdvancedProgressFields] = useState(false);
   const [progressLogBodyFatFormat, setProgressLogBodyFatFormat] = useState<'percentage' | 'kg'>(() => {
     // Default to kg if no existing data
     if (!client.bodyFatPercentage && !client.bodyFatMass) return 'kg';
@@ -220,6 +221,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
     bodyFatMass: client.bodyFatMass?.toString() || '',
     skeletalMuscleMass: client.skeletalMuscleMass?.toString() || '',
     skeletalMusclePercentage: client.skeletalMusclePercentage?.toString() || '',
+    bmr: client.bmr?.toString() || '',
+    metabolicAge: client.metabolicAge?.toString() || '',
+    visceralFat: client.visceralFat?.toString() || '',
   });
   const [savingProgressLog, setSavingProgressLog] = useState(false);
 
@@ -314,6 +318,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           bodyFatMass: l.body_fat_mass,
           skeletalMuscleMass: l.skeletal_muscle_mass,
           skeletalMusclePercentage: l.skeletal_muscle_percentage,
+          bmr: l.bmr,
+          metabolicAge: l.metabolic_age,
+          visceralFat: l.visceral_fat,
         })));
       } else {
         setProgressLogs([]);
@@ -1010,6 +1017,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         body_fat_mass: progressLog.bodyFatMass ? parseFloat(progressLog.bodyFatMass) : null,
         skeletal_muscle_mass: progressLog.skeletalMuscleMass ? parseFloat(progressLog.skeletalMuscleMass) : null,
         skeletal_muscle_percentage: progressLog.skeletalMusclePercentage ? parseFloat(progressLog.skeletalMusclePercentage) : null,
+        bmr: progressLog.bmr ? parseFloat(progressLog.bmr) : null,
+        metabolic_age: progressLog.metabolicAge ? parseInt(progressLog.metabolicAge) : null,
+        visceral_fat: progressLog.visceralFat ? parseFloat(progressLog.visceralFat) : null,
       });
 
       if (error) throw error;
@@ -1023,6 +1033,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           body_fat_mass: progressLog.bodyFatMass ? parseFloat(progressLog.bodyFatMass) : null,
           skeletal_muscle_mass: progressLog.skeletalMuscleMass ? parseFloat(progressLog.skeletalMuscleMass) : null,
           skeletal_muscle_percentage: progressLog.skeletalMusclePercentage ? parseFloat(progressLog.skeletalMusclePercentage) : null,
+          bmr: progressLog.bmr ? parseFloat(progressLog.bmr) : null,
+          metabolic_age: progressLog.metabolicAge ? parseInt(progressLog.metabolicAge) : null,
+          visceral_fat: progressLog.visceralFat ? parseFloat(progressLog.visceralFat) : null,
         })
         .eq('id', client.id)
         .select()
@@ -1038,11 +1051,15 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
           bodyFatMass: updatedClientData.body_fat_mass,
           skeletalMuscleMass: updatedClientData.skeletal_muscle_mass,
           skeletalMusclePercentage: updatedClientData.skeletal_muscle_percentage,
+          bmr: updatedClientData.bmr,
+          metabolicAge: updatedClientData.metabolic_age,
+          visceralFat: updatedClientData.visceral_fat,
         };
         onUpdateClient(updatedClient);
       }
 
       setShowProgressLogModal(false);
+      setShowAdvancedProgressFields(false);
       setProgressLog({
         date: new Date().toISOString().split('T')[0],
         weight: progressLog.weight,
@@ -1052,6 +1069,9 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
         bodyFatMass: progressLog.bodyFatMass,
         skeletalMuscleMass: progressLog.skeletalMuscleMass,
         skeletalMusclePercentage: progressLog.skeletalMusclePercentage,
+        bmr: progressLog.bmr,
+        metabolicAge: progressLog.metabolicAge,
+        visceralFat: progressLog.visceralFat,
       });
       showToast('Progress logged successfully!', 'success');
     } catch (e: any) {
@@ -1176,6 +1196,24 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                  unit={client.skeletalMuscleMass ? 'kg' : (client.skeletalMusclePercentage ? '%' : '')} 
                  icon={<Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />} 
                />
+               <StatCard
+                 label="BMR"
+                 value={client.bmr ?? 'N/A'}
+                 unit="kcal/day"
+                 icon={<Activity className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />}
+               />
+               <StatCard
+                 label="Metabolic Age"
+                 value={client.metabolicAge ?? 'N/A'}
+                 unit="yrs"
+                 icon={<User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />}
+               />
+               <StatCard
+                 label="Visceral Fat"
+                 value={client.visceralFat ?? 'N/A'}
+                 unit="level"
+                 icon={<Droplet className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />}
+               />
              </div>
              
              <div className="bg-white rounded-lg border p-4 sm:p-6">
@@ -1200,7 +1238,11 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                                 bodyFatMass: client.bodyFatMass?.toString() || '',
                                 skeletalMuscleMass: client.skeletalMuscleMass?.toString() || '',
                                 skeletalMusclePercentage: client.skeletalMusclePercentage?.toString() || '',
+                                bmr: client.bmr?.toString() || '',
+                                metabolicAge: client.metabolicAge?.toString() || '',
+                                visceralFat: client.visceralFat?.toString() || '',
                               });
+                              setShowAdvancedProgressFields(false);
                               setShowProgressLogModal(true);
                             }}
                             className="bg-[#8C3A36] text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-[#7a2f2b] flex items-center gap-1.5 sm:gap-2 shadow-sm"
@@ -2140,6 +2182,56 @@ const ClientProfile: React.FC<ClientProfileProps> = ({ client, onBack, onUpdateC
                   onChange={e => setProgressLog({...progressLog, notes: e.target.value})}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvancedProgressFields(!showAdvancedProgressFields)}
+                className="w-full py-2 border-2 border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {showAdvancedProgressFields ? 'Hide' : 'Show'} Advanced Fields
+                {showAdvancedProgressFields ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showAdvancedProgressFields && (
+                <div className="space-y-3 pt-2 border-t border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase">Advanced Metrics (Optional)</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">BMR</label>
+                      <input
+                        type="number"
+                        step="1"
+                        placeholder="kcal/day"
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                        value={progressLog.bmr || ''}
+                        onChange={e => setProgressLog({ ...progressLog, bmr: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Metabolic Age</label>
+                      <input
+                        type="number"
+                        step="1"
+                        placeholder="years"
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                        value={progressLog.metabolicAge || ''}
+                        onChange={e => setProgressLog({ ...progressLog, metabolicAge: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase">Visceral Fat</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="level"
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                        value={progressLog.visceralFat || ''}
+                        onChange={e => setProgressLog({ ...progressLog, visceralFat: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-3 sm:p-4 bg-slate-50 border-t flex justify-end sticky bottom-0">
               <button 
