@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Brain, Activity, MessageCircle, CreditCard, 
-  Settings, LogOut, Menu, X, Bell
+  Settings, LogOut, Menu, X, Bell, Library, Sparkles, Shield
 } from 'lucide-react';
 import ClientList from './ClientList';
 // FIX: Changed to a named import for MealPlanner as it does not have a default export.
@@ -10,6 +10,8 @@ import ProgressTracker from './ProgressTracker';
 import ClientProfile from './ClientProfile';
 import Billing from './Billing';
 import AccountSettings from './AccountSettings'; // New: Import AccountSettings
+import KnowledgeBase from './KnowledgeBase';
+import { AINutritionistChat } from './AINutritionistChat';
 import { Client, Notification } from '../types';
 import { supabase } from '../services/supabase';
 
@@ -171,6 +173,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clients', icon: Users },
     { id: 'planner', label: 'Meal Planner', icon: Brain },
+    { id: 'ai_nutritionist', label: 'AI Nutritionist', icon: Sparkles },
+    { id: 'knowledge', label: 'Knowledge Base', icon: Library },
     { id: 'progress', label: 'Progress', icon: Activity },
     { id: 'messages', label: 'Messages', icon: MessageCircle },
     { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -224,6 +228,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         return <Billing onClientClick={handleClientSelect} />;
       case 'planner':
         return <MealPlanner selectedClient={selectedClient} />;
+      case 'ai_nutritionist':
+        return <AINutritionistChat selectedClient={selectedClient} />;
+      case 'knowledge':
+        return <KnowledgeBase />;
       case 'progress':
         return <ProgressTracker selectedClient={selectedClient} />;
       case 'settings':
@@ -451,6 +459,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         )}
 
         <div className="p-4 border-t border-slate-800 space-y-1">
+          <a
+            href="#/admin"
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors"
+          >
+            <Shield className="w-5 h-5" />
+            Super admin
+          </a>
           <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
@@ -560,6 +575,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                 {item.label}
               </button>
             ))}
+            <a
+              href="#/admin"
+              onClick={() => setMobileMenuOpen(false)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-lg font-medium rounded-lg text-amber-400/90 hover:bg-slate-800"
+            >
+              <Shield className="w-6 h-6" />
+              Super admin
+            </a>
             <button
               onClick={() => {
                 setActiveTab('settings');

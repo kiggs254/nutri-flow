@@ -122,7 +122,41 @@ All endpoints require authentication via `Authorization: Bearer <supabase_jwt_to
 #### Generate Meal Plan
 - `POST /api/ai/generate-meal-plan`
 - Body: `{ provider: 'gemini' | 'openai' | 'deepseek', params: MealGenParams }`
-- Returns: `{ plan: DailyPlan[] }`
+- Returns: `{ plan, nutritionTargets, nutritionValidation, rag }` (extra fields are backward-compatible for clients that only read `plan`)
+
+#### Refine Meal Plan
+- `POST /api/ai/refine-meal-plan`
+- Same extended response shape as generate.
+
+#### Nutrition knowledge base (RAG)
+- Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql` (super admins, platform docs, `match_nutrition_embeddings` update for platform + per-user docs + food).
+- `POST /api/ai/knowledge-base/upload` — body: `{ title?, docType?, fileName, mimeType, base64Content }` or `{ title?, docType?, textContent }`
+- `GET /api/ai/knowledge-base/documents`
+- `DELETE /api/ai/knowledge-base/documents/:id`
+- `GET /api/ai/knowledge-base/stats`
+- `POST /api/ai/knowledge-base/search` — body: `{ query, matchCount? }`
+
+USDA sync is **super-admin only**: `POST /api/admin/knowledge/sync-usda` (requires JWT + row in `super_admins` and `SUPABASE_SERVICE_ROLE_KEY`).
+
+Optional: `USDA_API_KEY` in `.env` for higher FoodData Central rate limits (defaults to `DEMO_KEY`).
+
+#### AI Nutritionist chat (RAG)
+- `POST /api/ai/nutritionist-chat` — body: `{ provider, messages: [{ role, content }], clientId? }` (JWT required). Retrieves KB context (food, platform, your documents) before the model reply.
+
+#### Super admin API (`/api/admin/*`)
+All routes require `Authorization: Bearer <access_token>` and a matching `user_id` in `public.super_admins`. **Bootstrap** (once): in Supabase SQL editor, `INSERT INTO public.super_admins (user_id) VALUES ('<auth.users id>');`
+
+- `GET /api/admin/me` — `{ isSuperAdmin: true }`
+- `GET /api/admin/overview`
+- `GET /api/admin/nutritionists?page=&perPage=`
+- `GET /api/admin/clients?page=&perPage=&user_id=`
+- `GET /api/admin/meal-plans`, `GET /api/admin/meal-plans/:id`, `DELETE /api/admin/meal-plans/:id`
+- `GET /api/admin/food-logs?page=&perPage=`
+- `GET /api/admin/knowledge/documents`, `DELETE /api/admin/knowledge/documents/:id`
+- `GET /api/admin/knowledge/platform-documents`, `POST /api/admin/knowledge/platform-documents` (JSON body like KB upload), `DELETE /api/admin/knowledge/platform-documents/:id`
+- `POST /api/admin/knowledge/sync-usda` — body: `{ maxPages?, pageSize?, startPage? }`
+
+`SUPABASE_SERVICE_ROLE_KEY` is **required** for admin routes (and USDA / platform ingest).
 
 #### Analyze Food Image
 - `POST /api/ai/analyze-food-image`
@@ -176,7 +210,8 @@ docker run -p 3000:3000 --env-file .env nutritherapy-ai-proxy
 | `CORS_ORIGIN` | No | Allowed CORS origin (default: `*`) |
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | No | Supabase service role key (for admin operations, recommended) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes* | Supabase service role key (*required for `/api/admin/*`, USDA sync, platform KB; recommended for RAG food index) |
+| `USDA_API_KEY` | No | USDA FoodData Central API key (optional; `DEMO_KEY` used if unset) |
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
 | `OPENAI_API_KEY` | No | OpenAI API key (optional) |
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key (optional) |

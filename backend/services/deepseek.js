@@ -112,3 +112,37 @@ export async function callDeepSeek({
   
   return text;
 }
+
+/**
+ * @param {{ messages: Array<{ role: string, content: string }>, temperature?: number, maxTokens?: number }} opts
+ */
+export async function callDeepSeekChat({ messages, temperature = 0.7, maxTokens = 4096 }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY not configured');
+  }
+
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages,
+      max_tokens: maxTokens,
+      temperature
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`DeepSeek Error: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data?.choices?.[0]?.message?.content;
+  return extractMessageText(rawContent);
+}

@@ -221,8 +221,15 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     const executeGeneration = async (genParams: MealGenParams) => {
         try {
             const result = await generateMealPlan(genParams);
-            setPlan(result);
+            setPlan(result.plan);
             setPlanLabel(`Plan - ${new Date().toLocaleDateString()}`);
+            if (result.nutritionValidation?.warnings?.length) {
+              showToast(
+                `Nutrition check: ${result.nutritionValidation.warnings.length} notice(s). Target ~${result.nutritionTargets?.dailyCalories ?? '?'} kcal/day — review daily totals.`,
+                'warning',
+                9000
+              );
+            }
         } catch (e: any) {
             setError(e.message || "Failed to generate plan. Check console for details.");
             console.error(e);
@@ -271,8 +278,15 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
 
     try {
       const updated = await refineMealPlan(params, plan, trimmed);
-      setPlan(updated);
+      setPlan(updated.plan);
       showToast('AI edits applied. Review before saving.', 'success');
+      if (updated.nutritionValidation?.warnings?.length) {
+        showToast(
+          `Nutrition check: ${updated.nutritionValidation.warnings.length} notice(s) after refine.`,
+          'warning',
+          7000
+        );
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to refine plan.');
       console.error(e);

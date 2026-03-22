@@ -56,3 +56,56 @@ export async function callGemini({
 
   return text;
 }
+
+/**
+ * Multi-turn chat (roles: user | model)
+ * @param {{ model?: string, systemInstruction?: string, contents: Array<{ role: string, parts: Array<{ text: string }> }>, temperature?: number, maxOutputTokens?: number }} opts
+ */
+export async function callGeminiChat({
+  model = 'gemini-2.5-flash',
+  systemInstruction,
+  contents,
+  temperature = 0.7,
+  maxOutputTokens = 4096
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: Array.isArray(contents) ? contents : []
+  };
+
+  if (systemInstruction) {
+    body.systemInstruction = { parts: [{ text: systemInstruction }] };
+  }
+
+  body.generationConfig = {
+    temperature,
+    maxOutputTokens
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`Gemini API Error: ${error.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  if (!text) {
+    throw new Error('No response text from Gemini API');
+  }
+
+  return text;
+}

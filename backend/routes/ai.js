@@ -1,12 +1,45 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { callGemini } from '../services/gemini.js';
-import { callOpenAI, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
-import { callDeepSeek } from '../services/deepseek.js';
-import { extractTextFromWordDoc, isWordDocument, isDocxFile } from '../services/wordExtractor.js';
+import { callGemini, callGeminiChat } from '../services/gemini.js';
+import { callOpenAI, callOpenAIChat, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
+import { callDeepSeek, callDeepSeekChat } from '../services/deepseek.js';
+import { extractKnowledgeBaseText } from '../services/knowledgeBaseExtract.js';
+import { isWordDocument, isDocxFile, extractTextFromWordDoc } from '../services/wordExtractor.js';
 import { extractTextFromPDF } from '../services/pdfExtractor.js';
+import { computeDailyCalorieTarget } from '../services/tdeeCalculator.js';
+import { retrieveNutritionContext, retrieveNutritionContextForChat } from '../services/ragRetrieval.js';
+import { validatePlanNutrition } from '../services/mealPlanValidation.js';
+import { ingestDocument, deleteDocumentAndEmbeddings } from '../services/documentIngestion.js';
+import { createUserSupabase, createServiceSupabase } from '../services/supabaseClients.js';
+import { embedText } from '../services/embeddingService.js';
 
 const router = express.Router();
+
+function getAccessToken(req) {
+  const a = req.headers.authorization;
+  return a?.startsWith('Bearer ') ? a.slice(7) : '';
+}
+
+function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
+  const lines = [
+    `DAILY CALORIE TARGET (mandatory): ${tdee.dailyCalories} kcal/day.`,
+    `Target derivation: ${tdee.source}.`,
+    tdee.bmr ? `BMR used: ${tdee.bmr} kcal/day.` : '',
+    tdee.tdee ? `TDEE (before goal adjustment): ${tdee.tdee} kcal/day (activity x${tdee.activityMultiplier}).` : '',
+    tdee.goalAdjustment != null && tdee.goalAdjustment !== 0
+      ? `Goal calorie adjustment applied: ${tdee.goalAdjustment > 0 ? '+' : ''}${tdee.goalAdjustment} kcal/day.`
+      : '',
+    tdee.note ? `Note: ${tdee.note}` : '',
+    '',
+    'Each day totalCalories must be within 15% of this target unless medically contradicted by the records.',
+    'Meal calories and macros must be consistent with ingredient amounts using the VERIFIED NUTRITION DATA below when those foods appear.',
+    'Do not ignore the calorie target or nutritionist instructions in favor of generic estimates.'
+  ];
+  if (ragContext) {
+    lines.push('', ragContext);
+  }
+  return lines.filter(Boolean).join('\n');
+}
 
 // Get available AI providers (based on configured API keys)
 router.get('/providers', authenticate, (req, res) => {
@@ -23,6 +56,139 @@ router.get('/providers', authenticate, (req, res) => {
   }
   
   res.json({ providers: availableProviders });
+});
+
+// --- Nutrition knowledge base (RAG) ---
+
+router.post('/knowledge-base/upload', authenticate, async (req, res) => {
+  try {
+    const { title, docType, fileName, mimeType, base64Content, textContent } = req.body || {};
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    let contentText = typeof textContent === 'string' ? textContent : '';
+    if (!contentText.trim()) {
+      if (!base64Content || !mimeType) {
+        return res.status(400).json({ error: 'Provide textContent or base64Content + mimeType' });
+      }
+      contentText = await extractKnowledgeBaseText({
+        mimeType,
+        fileName: fileName || 'upload',
+        base64Content
+      });
+    }
+
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+
+    const userSb = createUserSupabase(token);
+    const result = await ingestDocument(userSb, {
+      userId,
+      title: title || fileName || 'Untitled document',
+      contentText,
+      docType: docType || 'guide',
+      fileName: fileName || null,
+      mimeType: mimeType || null
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('KB upload error:', error);
+    res.status(500).json({ error: error.message || 'Upload failed' });
+  }
+});
+
+router.get('/knowledge-base/documents', authenticate, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+    const userSb = createUserSupabase(token);
+    const { data, error } = await userSb
+      .from('nutrition_documents')
+      .select('id, title, doc_type, file_name, chunk_count, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ documents: data || [] });
+  } catch (error) {
+    console.error('KB list error:', error);
+    res.status(500).json({ error: error.message || 'Failed to list documents' });
+  }
+});
+
+router.delete('/knowledge-base/documents/:id', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+    const userSb = createUserSupabase(token);
+    await deleteDocumentAndEmbeddings(userSb, req.params.id, userId);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('KB delete error:', error);
+    res.status(500).json({ error: error.message || 'Delete failed' });
+  }
+});
+
+router.get('/knowledge-base/stats', authenticate, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+    const userSb = createUserSupabase(token);
+
+    const { count: myDocCount } = await userSb
+      .from('nutrition_documents')
+      .select('*', { count: 'exact', head: true });
+
+    const { data: docRows } = await userSb.from('nutrition_documents').select('chunk_count');
+    const myChunkCount = (docRows || []).reduce((s, r) => s + (Number(r.chunk_count) || 0), 0);
+
+    const svc = createServiceSupabase();
+    let foodsCount = 0;
+    let foodEmbeddingsCount = 0;
+    if (svc) {
+      const { count: fc } = await svc.from('nutrition_foods').select('*', { count: 'exact', head: true });
+      const { count: ec } = await svc
+        .from('nutrition_embeddings')
+        .select('*', { count: 'exact', head: true })
+        .eq('source_type', 'food');
+      foodsCount = fc || 0;
+      foodEmbeddingsCount = ec || 0;
+    }
+
+    res.json({
+      foodsCount,
+      foodEmbeddingsCount,
+      myDocumentsCount: myDocCount || 0,
+      myDocumentChunksCount: myChunkCount,
+      serviceRoleConfigured: !!svc
+    });
+  } catch (error) {
+    console.error('KB stats error:', error);
+    res.status(500).json({ error: error.message || 'Stats failed' });
+  }
+});
+
+router.post('/knowledge-base/search', authenticate, async (req, res) => {
+  try {
+    const { query, matchCount } = req.body || {};
+    if (!query || String(query).trim() === '') {
+      return res.status(400).json({ error: 'query is required' });
+    }
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+    const embedding = await embedText(String(query).slice(0, 8000));
+    const userSb = createUserSupabase(token);
+    const { data, error } = await userSb.rpc('match_nutrition_embeddings', {
+      query_embedding: embedding,
+      match_count: Math.min(Math.max(Number(matchCount) || 12, 1), 40)
+    });
+    if (error) throw error;
+    res.json({ matches: data || [] });
+  } catch (error) {
+    console.error('KB search error:', error);
+    res.status(500).json({ error: error.message || 'Search failed' });
+  }
 });
 
 // Helper to convert messages format to Gemini parts format
@@ -82,6 +248,21 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
       excludedMeals = ['lunch'];
     }
 
+    const tdee = computeDailyCalorieTarget(params);
+    let ragContext = '';
+    let ragMeta = null;
+    const accessToken = getAccessToken(req);
+    if (accessToken && params.disableRag !== true) {
+      try {
+        const r = await retrieveNutritionContext(accessToken, params, { matchCount: 26 });
+        ragContext = r.contextBlock || '';
+        ragMeta = { matchCount: r.matches?.length ?? 0, error: r.error };
+      } catch (e) {
+        ragMeta = { error: e.message };
+      }
+    }
+    const nutritionPreamble = buildMealPlanNutritionPreamble(params, tdee, ragContext);
+
     const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
   CRITICAL RULES:
   1. Adhere strictly to all health constraints and medical considerations.
@@ -92,12 +273,13 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
      - dietaryHistory
      - socialBackground (schedule, culture, lifestyle constraints)
   3. Base meal suggestions on the client's goal and dietary history/preferences.
-  3. Output must be a valid JSON object matching the requested schema exactly.
-  4. Instructions: MAX 10 words.
-  5. Ingredients: MAX 5 items, each MUST include specific quantity.
-  6. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
-  7. Snacks MUST include full nutrition + instructions, same as other meals.
-  8. Be concise.
+  4. When VERIFIED NUTRITION DATA is provided in the user message, you MUST use those kcal and macro values per 100g (and stated portions) for those foods—do not substitute different numbers for the same food.
+  5. Output must be a valid JSON object matching the requested schema exactly.
+  6. Instructions: MAX 10 words.
+  7. Ingredients: MAX 5 items, each MUST include specific quantity.
+  8. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
+  9. Snacks MUST include full nutrition + instructions, same as other meals.
+  10. Be concise.
   
   MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
   - calories: Must be a positive integer (e.g., 350, 450, 520)
@@ -138,6 +320,8 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
   2. Specific quantities for ALL ingredients (e.g., "20g porridge", "150g chicken", "2 eggs", "1 cup rice")`;
 
     const userPrompt = `
+    ${nutritionPreamble}
+
     Client Profile:
     - Age: ${params.age} y/o ${params.gender}
     - Current Metrics: ${params.weight}kg, ${params.height}cm
@@ -145,8 +329,8 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     - Primary Goal: ${params.goal}
     - Activity Level: ${params.activityLevel}
 
-    Nutrition target instruction:
-    - make an estimate of the calories needed per day as per the metrics given especially the BMR and give a surplus or deficit as per the goal indicated in the records and notes.
+    Nutrition target (server-computed—follow the DAILY CALORIE TARGET above; do not replace it with a different estimate):
+    - Align each day's totalCalories with the stated daily target within 15% unless contraindicated by medical records.
 
     Critical Health Information (MUST BE CONSIDERED):
     - Medical History: ${params.medicalHistory || 'None provided.'}
@@ -440,7 +624,17 @@ JSON OUTPUT FORMAT (MANDATORY):
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     }
 
-    res.json({ plan });
+    const nutritionValidation = validatePlanNutrition(plan, tdee.dailyCalories);
+    res.json({
+      plan,
+      nutritionTargets: tdee,
+      nutritionValidation,
+      rag: {
+        used: Boolean(ragContext),
+        matchCount: ragMeta?.matchCount,
+        error: ragMeta?.error
+      }
+    });
   } catch (error) {
     console.error('Generate meal plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate meal plan' });
@@ -467,6 +661,21 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
       excludedMeals = ['lunch'];
     }
 
+    const tdee = computeDailyCalorieTarget(params);
+    let ragContext = '';
+    let ragMeta = null;
+    const refineAccessToken = getAccessToken(req);
+    if (refineAccessToken && params.disableRag !== true) {
+      try {
+        const r = await retrieveNutritionContext(refineAccessToken, params, { matchCount: 26 });
+        ragContext = r.contextBlock || '';
+        ragMeta = { matchCount: r.matches?.length ?? 0, error: r.error };
+      } catch (e) {
+        ragMeta = { error: e.message };
+      }
+    }
+    const nutritionPreamble = buildMealPlanNutritionPreamble(params, tdee, ragContext);
+
     const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
   CRITICAL RULES:
   1. Adhere strictly to all health constraints and medical considerations.
@@ -477,12 +686,13 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
      - dietaryHistory
      - socialBackground (schedule, culture, lifestyle constraints)
   3. Base meal suggestions on the client's goal and dietary history/preferences.
-  3. Output must be a valid JSON object matching the requested schema exactly.
-  4. Instructions: MAX 10 words.
-  5. Ingredients: MAX 5 items, each MUST include specific quantity.
-  6. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
-  7. Snacks MUST include full nutrition + instructions, same as other meals.
-  8. Be concise.
+  4. When VERIFIED NUTRITION DATA is provided in the user message, you MUST use those kcal and macro values per 100g (and stated portions) for those foods—do not substitute different numbers for the same food.
+  5. Output must be a valid JSON object matching the requested schema exactly.
+  6. Instructions: MAX 10 words.
+  7. Ingredients: MAX 5 items, each MUST include specific quantity.
+  8. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
+  9. Snacks MUST include full nutrition + instructions, same as other meals.
+  10. Be concise.
   
   MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
   - calories: Must be a positive integer (e.g., 350, 450, 520)
@@ -501,6 +711,8 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
   2. Specific quantities for ALL ingredients (e.g., "20g porridge", "150g chicken", "2 eggs", "1 cup rice")`;
 
     const userPrompt = `
+    ${nutritionPreamble}
+
     Client Profile:
     - Age: ${params.age} y/o ${params.gender}
     - Current Metrics: ${params.weight}kg, ${params.height}cm
@@ -508,8 +720,8 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     - Primary Goal: ${params.goal}
     - Activity Level: ${params.activityLevel}
 
-    Nutrition target instruction:
-    - make an estimate of the calories needed per day as per the metrics given especially the BMR and give a surplus or deficit as per the goal indicated in the records and notes.
+    Nutrition target (server-computed—follow the DAILY CALORIE TARGET above):
+    - Keep each day's totalCalories aligned with that target within 15% unless contraindicated by medical records.
 
     Records (MUST BE CONSIDERED):
     - Medical History: ${params.medicalHistory || 'None provided.'}
@@ -739,7 +951,17 @@ JSON OUTPUT FORMAT (MANDATORY):
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     }
 
-    res.json({ plan: refinedPlan });
+    const nutritionValidation = validatePlanNutrition(refinedPlan, tdee.dailyCalories);
+    res.json({
+      plan: refinedPlan,
+      nutritionTargets: tdee,
+      nutritionValidation,
+      rag: {
+        used: Boolean(ragContext),
+        matchCount: ragMeta?.matchCount,
+        error: ragMeta?.error
+      }
+    });
   } catch (error) {
     console.error('Refine meal plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to refine meal plan' });
@@ -1040,6 +1262,123 @@ router.post('/analyze-medical-document', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Analyze medical document error:', error);
     res.status(500).json({ error: error.message || 'Failed to analyze document' });
+  }
+});
+
+const NUTRITIONIST_CHAT_SYSTEM = `You are an expert registered dietitian and nutrition coach helping a fellow nutrition professional. Be accurate, practical, and concise. Use bullet points when helpful.
+
+Rules:
+- When VERIFIED NUTRITION REFERENCE data is provided below, prefer those numbers for foods and portions; do not invent conflicting values.
+- You are not a substitute for medical care; encourage consulting physicians for diagnoses, medications, and acute conditions.
+- Do not claim to diagnose disease.`;
+
+async function loadClientForChat(token, userId, clientId) {
+  if (!clientId) return null;
+  const svc = createServiceSupabase();
+  if (svc) {
+    const { data: adm } = await svc.from('super_admins').select('user_id').eq('user_id', userId).maybeSingle();
+    if (adm) {
+      const { data: c } = await svc.from('clients').select('*').eq('id', clientId).maybeSingle();
+      return c || null;
+    }
+  }
+  const userSb = createUserSupabase(token);
+  const { data: c } = await userSb.from('clients').select('*').eq('id', clientId).maybeSingle();
+  return c || null;
+}
+
+// AI Nutritionist chat (RAG-augmented)
+router.post('/nutritionist-chat', authenticate, async (req, res) => {
+  try {
+    const { provider, messages, clientId } = req.body || {};
+
+    if (!provider) {
+      return res.status(400).json({ error: 'Provider is required' });
+    }
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages must be a non-empty array' });
+    }
+
+    const token = getAccessToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
+
+    const capped = messages.slice(-16).filter((m) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'));
+    if (!capped.length) {
+      return res.status(400).json({ error: 'No valid messages' });
+    }
+
+    const lastUser = [...capped].reverse().find((m) => m.role === 'user');
+    const userMessage = lastUser?.content || '';
+
+    const clientRow = await loadClientForChat(token, req.user.id, clientId);
+    const clientSnapshot = clientRow
+      ? {
+          goal: clientRow.goal,
+          allergies: clientRow.allergies,
+          preferences: clientRow.preferences,
+          dietaryHistory: clientRow.dietary_history
+        }
+      : null;
+
+    const rag = await retrieveNutritionContextForChat(token, { userMessage, clientSnapshot }, { matchCount: 18 });
+    const systemWithRag = rag.contextBlock
+      ? `${NUTRITIONIST_CHAT_SYSTEM}\n\n${rag.contextBlock}`
+      : NUTRITIONIST_CHAT_SYSTEM;
+
+    let reply;
+
+    if (provider === 'gemini') {
+      const contents = [];
+      for (const m of capped) {
+        if (m.role === 'assistant') {
+          contents.push({ role: 'model', parts: [{ text: m.content }] });
+        } else {
+          contents.push({ role: 'user', parts: [{ text: m.content }] });
+        }
+      }
+      reply = await callGeminiChat({
+        systemInstruction: systemWithRag,
+        contents,
+        temperature: 0.65,
+        maxOutputTokens: 4096
+      });
+    } else if (provider === 'openai') {
+      const oaMessages = [{ role: 'system', content: systemWithRag }];
+      for (const m of capped) {
+        oaMessages.push({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content
+        });
+      }
+      reply = await callOpenAIChat({
+        messages: oaMessages,
+        model: 'gpt-4o',
+        temperature: 0.65,
+        maxTokens: 4096
+      });
+    } else {
+      const dsMessages = [{ role: 'system', content: systemWithRag }];
+      for (const m of capped) {
+        dsMessages.push({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content
+        });
+      }
+      reply = await callDeepSeekChat({
+        messages: dsMessages,
+        temperature: 0.65,
+        maxTokens: 4096
+      });
+    }
+
+    res.json({
+      reply: reply || '',
+      ragUsed: Boolean(rag.contextBlock),
+      ragError: rag.error || undefined
+    });
+  } catch (error) {
+    console.error('Nutritionist chat error:', error);
+    res.status(500).json({ error: error.message || 'Chat failed' });
   }
 });
 

@@ -230,6 +230,81 @@ export interface MealGenParams {
    * @deprecated Use excludeMeals instead (kept for backwards compatibility).
    */
   excludeLunch?: boolean;
+
+  /** When true, skip RAG retrieval (still uses server TDEE target). */
+  disableRag?: boolean;
+}
+
+/** Server-computed calorie target returned with meal plan generation */
+export interface NutritionTargetsSummary {
+  dailyCalories: number;
+  source: 'explicit_instruction' | 'computed_tdee' | 'fallback_default';
+  bmr?: number | null;
+  tdee?: number | null;
+  activityMultiplier?: number | null;
+  goalAdjustment?: number | null;
+  note?: string;
+}
+
+export interface NutritionPlanValidation {
+  warnings: string[];
+  perDay: Array<{
+    day: string;
+    reportedTotal: number;
+    summedFromMeals: number;
+    target: number;
+    withinTarget: boolean;
+  }>;
+  targetDailyKcal?: number;
+}
+
+export interface MealPlanGenerationResult {
+  plan: DailyPlan[];
+  nutritionTargets?: NutritionTargetsSummary;
+  nutritionValidation?: NutritionPlanValidation;
+  rag?: {
+    used?: boolean;
+    matchCount?: number;
+    error?: string;
+  };
+}
+
+export interface NutritionFood {
+  id: string;
+  name: string;
+  category?: string | null;
+  source: 'usda' | 'custom';
+  usdaFdcId?: number | null;
+  caloriesPer100g?: number | null;
+  proteinPer100g?: number | null;
+  carbsPer100g?: number | null;
+  fatsPer100g?: number | null;
+}
+
+export interface NutritionDocument {
+  id: string;
+  title: string;
+  docType: string;
+  fileName?: string | null;
+  chunkCount: number;
+  createdAt: string;
+}
+
+export interface KnowledgeBaseStats {
+  foodsCount: number;
+  foodEmbeddingsCount: number;
+  myDocumentsCount: number;
+  myDocumentChunksCount: number;
+  serviceRoleConfigured: boolean;
+}
+
+export interface KnowledgeBaseSearchMatch {
+  id: string;
+  content: string;
+  similarity: number;
+  source_type: string;
+  source_id: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MedicalDocument {

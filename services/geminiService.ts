@@ -1,4 +1,4 @@
-import { MealGenParams, DailyPlan } from '../types';
+import { MealGenParams, DailyPlan, MealPlanGenerationResult, KnowledgeBaseStats, KnowledgeBaseSearchMatch } from '../types';
 import { supabase } from './supabase';
 
 // --- Provider Configuration ---
@@ -36,7 +36,11 @@ const getAuthToken = async (): Promise<string> => {
 };
 
 // Helper to make authenticated backend requests
-const callBackend = async (endpoint: string, body: any): Promise<any> => {
+const callBackend = async (
+  endpoint: string,
+  body?: any,
+  method: 'GET' | 'POST' | 'DELETE' = 'POST'
+): Promise<any> => {
   const backendUrl = getBackendUrl();
   const token = await getAuthToken();
 
@@ -44,17 +48,21 @@ const callBackend = async (endpoint: string, body: any): Promise<any> => {
 
   try {
     const response = await fetch(`${backendUrl}${endpoint}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(body)
+      body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {})
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-      const errorMessage = error.error?.message || response.statusText || 'Backend request failed';
+      const error = await response.json().catch(() => ({}));
+      const errorMessage =
+        (typeof error.error === 'string' ? error.error : error.error?.message) ||
+        error.message ||
+        response.statusText ||
+        'Backend request failed';
       console.error(`[AI Proxy] Backend error (${response.status}):`, errorMessage);
       throw new Error(errorMessage);
     }
@@ -74,7 +82,7 @@ const callBackend = async (endpoint: string, body: any): Promise<any> => {
 
 // --- Service Functions ---
 
-export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan[]> => {
+export const generateMealPlan = async (params: MealGenParams): Promise<MealPlanGenerationResult> => {
   const provider = getAIProvider();
 
   try {
@@ -83,7 +91,12 @@ export const generateMealPlan = async (params: MealGenParams): Promise<DailyPlan
       params
     });
 
-    return response.plan || [];
+    return {
+      plan: response.plan || [],
+      nutritionTargets: response.nutritionTargets,
+      nutritionValidation: response.nutritionValidation,
+      rag: response.rag
+    };
   } catch (error: any) {
     console.error('Generate meal plan error:', error);
     throw error;
@@ -94,7 +107,7 @@ export const refineMealPlan = async (
   params: MealGenParams,
   plan: DailyPlan[],
   instructions: string
-): Promise<DailyPlan[]> => {
+): Promise<MealPlanGenerationResult> => {
   const provider = getAIProvider();
 
   try {
@@ -105,7 +118,12 @@ export const refineMealPlan = async (
       instructions
     });
 
-    return response.plan || [];
+    return {
+      plan: response.plan || [],
+      nutritionTargets: response.nutritionTargets,
+      nutritionValidation: response.nutritionValidation,
+      rag: response.rag
+    };
   } catch (error: any) {
     console.error('Refine meal plan error:', error);
     throw error;
@@ -192,4 +210,137 @@ export const generateClientInsights = async (clientName: string, weightHistory: 
     console.error("Insights generation failed", e);
     return `Could not generate insights: ${e.message || "Please try again."}`;
   }
+};
+
+// --- Nutrition knowledge base (RAG) ---
+
+export const fetchKnowledgeBaseStats = async (): Promise<KnowledgeBaseStats> => {
+  const data = await callBackend('/api/ai/knowledge-base/stats', undefined, 'GET');
+  return data as KnowledgeBaseStats;
+};
+
+export const fetchKnowledgeDocuments = async (): Promise<{ documents: Array<{
+  id: string;
+  title: string;
+  doc_type: string;
+  file_name: string | null;
+  chunk_count: number;
+  created_at: string;
+}> }> => {
+  return callBackend('/api/ai/knowledge-base/documents', undefined, 'GET');
+};
+
+export const deleteKnowledgeDocument = async (id: string): Promise<void> => {
+  await callBackend(`/api/ai/knowledge-base/documents/${id}`, undefined, 'DELETE');
+};
+
+/** Super admin only */
+export const adminSyncUsda = async (opts?: {
+  maxPages?: number;
+  pageSize?: number;
+  startPage?: number;
+}): Promise<{ foodsProcessed: number; errors: unknown[]; summaries: unknown[] }> => {
+  return callBackend('/api/admin/knowledge/sync-usda', opts || {});
+};
+
+export const fetchAdminMe = async (): Promise<{ isSuperAdmin: boolean }> => {
+  return callBackend('/api/admin/me', undefined, 'GET');
+};
+
+export const fetchAdminOverview = async () => {
+  return callBackend('/api/admin/overview', undefined, 'GET');
+};
+
+export const fetchAdminNutritionists = async (page = 1, perPage = 50) => {
+  return callBackend(`/api/admin/nutritionists?page=${page}&perPage=${perPage}`, undefined, 'GET');
+};
+
+export const fetchAdminClients = async (page = 1, limit = 40, userId?: string) => {
+  let q = `/api/admin/clients?page=${page}&limit=${limit}`;
+  if (userId) q += `&user_id=${encodeURIComponent(userId)}`;
+  return callBackend(q, undefined, 'GET');
+};
+
+export const fetchAdminMealPlans = async (page = 1, limit = 30) => {
+  return callBackend(`/api/admin/meal-plans?page=${page}&limit=${limit}`, undefined, 'GET');
+};
+
+export const fetchAdminMealPlan = async (id: string) => {
+  return callBackend(`/api/admin/meal-plans/${id}`, undefined, 'GET');
+};
+
+export const adminDeleteMealPlan = async (id: string) => {
+  await callBackend(`/api/admin/meal-plans/${id}`, undefined, 'DELETE');
+};
+
+export const fetchAdminFoodLogs = async (page = 1, limit = 40) => {
+  return callBackend(`/api/admin/food-logs?page=${page}&limit=${limit}`, undefined, 'GET');
+};
+
+export const fetchAdminKnowledgeDocuments = async () => {
+  return callBackend('/api/admin/knowledge/documents', undefined, 'GET');
+};
+
+export const adminDeleteKnowledgeDocument = async (id: string) => {
+  await callBackend(`/api/admin/knowledge/documents/${id}`, undefined, 'DELETE');
+};
+
+export const fetchAdminPlatformDocuments = async () => {
+  return callBackend('/api/admin/knowledge/platform', undefined, 'GET');
+};
+
+export const adminUploadPlatformDocument = async (params: {
+  title?: string;
+  docType?: string;
+  fileName: string;
+  mimeType: string;
+  base64Content: string;
+}) => {
+  return callBackend('/api/admin/knowledge/platform/upload', params);
+};
+
+export const adminUploadPlatformText = async (params: { title?: string; docType?: string; textContent: string }) => {
+  return callBackend('/api/admin/knowledge/platform/upload', params);
+};
+
+export const adminDeletePlatformDocument = async (id: string) => {
+  await callBackend(`/api/admin/knowledge/platform/${id}`, undefined, 'DELETE');
+};
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export const sendNutritionistChat = async (
+  messages: ChatMessage[],
+  clientId?: string | null
+): Promise<{ reply: string; ragUsed?: boolean; ragError?: string }> => {
+  const provider = getAIProvider();
+  return callBackend('/api/ai/nutritionist-chat', { provider, messages, clientId: clientId || undefined });
+};
+
+export const searchKnowledgeBase = async (
+  query: string,
+  matchCount?: number
+): Promise<{ matches: KnowledgeBaseSearchMatch[] }> => {
+  return callBackend('/api/ai/knowledge-base/search', { query, matchCount });
+};
+
+export const uploadKnowledgeBaseDocument = async (params: {
+  title?: string;
+  docType?: string;
+  fileName: string;
+  mimeType: string;
+  base64Content: string;
+}): Promise<{ documentId: string; chunksIndexed: number }> => {
+  return callBackend('/api/ai/knowledge-base/upload', params);
+};
+
+export const uploadKnowledgeBaseText = async (params: {
+  title?: string;
+  docType?: string;
+  textContent: string;
+}): Promise<{ documentId: string; chunksIndexed: number }> => {
+  return callBackend('/api/ai/knowledge-base/upload', params);
 };

@@ -241,3 +241,42 @@ export async function callOpenAI({
   
   return text;
 }
+
+/**
+ * @param {{ model?: string, messages: Array<{ role: string, content: string }>, temperature?: number, maxTokens?: number }} opts
+ */
+export async function callOpenAIChat({
+  model = 'gpt-4o',
+  messages,
+  temperature = 0.7,
+  maxTokens = 4096
+}) {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY not configured');
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`OpenAI Error: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data?.choices?.[0]?.message?.content;
+  return extractMessageText(rawContent);
+}

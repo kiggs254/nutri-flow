@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 // FIX: Changed to named import for ClientPortal.
 import { ClientPortal } from './components/ClientPortal';
+import SuperAdminPanel from './components/SuperAdminPanel';
 import { supabase } from './services/supabase';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './utils/toast';
@@ -99,6 +100,14 @@ const App: React.FC = () => {
         </ToastProvider>
       );
     }
+  }
+
+  if (session && (portalPath === '/admin' || portalPath.startsWith('/admin'))) {
+    return (
+      <ToastProvider>
+        <SuperAdminPanel onLogout={handleLogout} />
+      </ToastProvider>
+    );
   }
 
   return (
