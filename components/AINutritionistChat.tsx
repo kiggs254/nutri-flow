@@ -551,7 +551,6 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       <Card className="mb-0 flex min-h-0 flex-1 flex-col overflow-hidden shadow-md">
         <CardContent className="flex min-h-0 flex-1 flex-col p-0">
           <div
-            ref={scrollRef}
             className={cn(
               'min-h-[min(42dvh,280px)] max-h-[min(58dvh,420px)] flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:min-h-[320px] sm:max-h-[min(62dvh,520px)] sm:px-5 sm:py-5'
             )}
