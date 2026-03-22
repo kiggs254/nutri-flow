@@ -203,7 +203,10 @@ export async function syncUsdaFoods(options = {}) {
       break;
     }
 
-    const foods = listJson.foods || [];
+    // USDA /foods/list may return either:
+    // - an array of food objects (current behavior), or
+    // - an object with a `foods` array (legacy/alternate wrappers)
+    const foods = Array.isArray(listJson) ? listJson : listJson?.foods || [];
     if (!foods.length) {
       summaries.push({ page: p, message: 'no foods returned' });
       break;
