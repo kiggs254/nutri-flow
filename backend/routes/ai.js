@@ -1158,7 +1158,7 @@ async function loadClientForChat(token, userId, clientId) {
 // AI Nutritionist chat (RAG-augmented)
 router.post('/nutritionist-chat', authenticate, async (req, res) => {
   try {
-    const { provider, messages, clientId } = req.body || {};
+    const { provider, messages, clientId, extraContext } = req.body || {};
 
     const allowedChatProviders = ['gemini', 'openai', 'deepseek'];
     if (!provider) {
@@ -1195,8 +1195,18 @@ router.post('/nutritionist-chat', authenticate, async (req, res) => {
       : null;
 
     const rag = await retrieveNutritionContextForChat(token, { userMessage, clientSnapshot }, { matchCount: 18 });
-    const systemWithRag = rag.contextBlock
-      ? `${NUTRITIONIST_CHAT_SYSTEM}\n\n${rag.contextBlock}`
+    const safeExtraContext =
+      typeof extraContext === 'string' && extraContext.trim()
+        ? extraContext.trim().slice(0, 24000)
+        : '';
+    const contextBlock = [
+      rag.contextBlock || '',
+      safeExtraContext ? `CLIENT CONTEXT SNAPSHOT:\n${safeExtraContext}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const systemWithRag = contextBlock
+      ? `${NUTRITIONIST_CHAT_SYSTEM}\n\n${contextBlock}`
       : NUTRITIONIST_CHAT_SYSTEM;
 
     let reply;

@@ -303,9 +303,15 @@ export interface ChatMessage {
 
 export const sendNutritionistChat = async (
   messages: ChatMessage[],
-  clientId?: string | null
+  clientId?: string | null,
+  options?: { extraContext?: string }
 ): Promise<{ reply: string; ragUsed?: boolean; ragError?: string }> => {
   const provider = getAIProvider();
-  return callBackend('/api/ai/nutritionist-chat', { provider, messages, clientId: clientId || undefined });
+  return callBackend('/api/ai/nutritionist-chat', {
+    provider,
+    messages,
+    clientId: clientId || undefined,
+    extraContext: options?.extraContext || undefined
+  });
 };
 

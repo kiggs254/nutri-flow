@@ -260,14 +260,12 @@ const KnowledgeHub: React.FC = () => {
       {loading && !summary ? (
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             ['Foods (DB)', summary?.foodsCount],
             ['Food embeddings', summary?.foodEmbeddingsCount],
             ['Platform docs', summary?.platformDocumentsCount],
-            ['Platform emb.', summary?.platformEmbeddingsCount],
-            ['User docs (legacy)', summary?.userDocumentsCount],
-            ['User doc chunks', summary?.userDocumentEmbeddingsCount]
+            ['Platform emb.', summary?.platformEmbeddingsCount]
           ].map(([k, v]) => (
             <div key={String(k)} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
               <div className="text-xs text-slate-500 uppercase font-bold leading-tight">{k}</div>

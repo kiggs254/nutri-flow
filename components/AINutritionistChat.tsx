@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   MessageCircle,
@@ -17,6 +17,7 @@ import {
   AI_PROVIDER_CHANGED_EVENT,
   type AIProvider
 } from '../services/geminiService';
+import { supabase } from '../services/supabase';
 import { Client } from '../types';
 import { useToast } from '../utils/toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -31,6 +32,19 @@ const SUGGESTED_PROMPTS = [
   'What to watch for with metformin and alcohol?',
   'Outline a 3-day low-FODMAP reintroduction check-in script'
 ];
+
+const CHAT_SESSIONS_KEY = 'nutriflow_ai_chat_sessions_v1';
+const MAX_STORED_CHAT_SESSIONS = 50;
+
+interface StoredChatSession {
+  id: string;
+  title: string;
+  clientId: string | null;
+  clientName: string | null;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface AINutritionistChatProps {
   selectedClient: Client | null;
@@ -47,14 +61,108 @@ function chatProviderLabel(p: AIProvider): string {
   }
 }
 
+function loadStoredSessions(): StoredChatSession[] {
+  try {
+    const raw = localStorage.getItem(CHAT_SESSIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s) =>
+        s &&
+        typeof s.id === 'string' &&
+        typeof s.title === 'string' &&
+        Array.isArray(s.messages) &&
+        typeof s.updatedAt === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredSessions(sessions: StoredChatSession[]) {
+  try {
+    localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function createChatTitle(messages: ChatMessage[], clientName?: string | null): string {
+  const firstUser = messages.find((m) => m.role === 'user')?.content?.trim() || 'New nutrition chat';
+  const short = firstUser.length > 68 ? `${firstUser.slice(0, 68)}...` : firstUser;
+  return clientName ? `${clientName}: ${short}` : short;
+}
+
 export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selectedClient }) => {
   const { showToast } = useToast();
+  const initialSessionsRef = useRef<StoredChatSession[]>(loadStoredSessions());
+  const sessionsRef = useRef<StoredChatSession[]>(initialSessionsRef.current);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [activeProvider, setActiveProvider] = useState<AIProvider>(() => getAIProvider());
+  const [sessions, setSessions] = useState<StoredChatSession[]>(initialSessionsRef.current);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [clientContext, setClientContext] = useState('');
+  const [includeClientContext, setIncludeClientContext] = useState(false);
+  const [loadingContext, setLoadingContext] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const prevClientIdRef = useRef<string | null>(selectedClient?.id ?? null);
+  const prevClientNameRef = useRef<string | null>(selectedClient?.name ?? null);
+
+  const currentClientId = selectedClient?.id ?? null;
+
+  const applySessions = useCallback((next: StoredChatSession[], commitState = true) => {
+    sessionsRef.current = next;
+    writeStoredSessions(next);
+    if (commitState) setSessions(next);
+  }, []);
+
+  const loadSession = useCallback((session: StoredChatSession) => {
+    setMessages(session.messages || []);
+    messagesRef.current = session.messages || [];
+    setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id;
+    setClientContext('');
+    setIncludeClientContext(false);
+  }, []);
+
+  const persistCurrentSession = useCallback(
+    (
+      thread: ChatMessage[] = messagesRef.current,
+      opts?: { clientId?: string | null; clientName?: string | null; commitState?: boolean }
+    ) => {
+      if (!thread.length) return null;
+
+      const clientId = opts?.clientId !== undefined ? opts.clientId : prevClientIdRef.current;
+      const clientName = opts?.clientName !== undefined ? opts.clientName : prevClientNameRef.current;
+      const sessionId =
+        activeSessionIdRef.current || `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const existing = sessionsRef.current.find((s) => s.id === sessionId);
+      const nowIso = new Date().toISOString();
+      const nextSession: StoredChatSession = {
+        id: sessionId,
+        title: createChatTitle(thread, clientName),
+        clientId: clientId ?? null,
+        clientName: clientName ?? null,
+        messages: thread,
+        createdAt: existing?.createdAt || nowIso,
+        updatedAt: nowIso
+      };
+      const merged = [nextSession, ...sessionsRef.current.filter((s) => s.id !== sessionId)]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, MAX_STORED_CHAT_SESSIONS);
+
+      applySessions(merged, opts?.commitState !== false);
+      setActiveSessionId(sessionId);
+      activeSessionIdRef.current = sessionId;
+      return sessionId;
+    },
+    [applySessions]
+  );
 
   useEffect(() => {
     const sync = () => setActiveProvider(getAIProvider());
@@ -71,23 +179,82 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sending]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    const nextClientId = selectedClient?.id ?? null;
+    const nextClientName = selectedClient?.name ?? null;
+    const prevClientId = prevClientIdRef.current;
+    const prevClientName = prevClientNameRef.current;
+
+    if (prevClientId !== nextClientId) {
+      persistCurrentSession(messagesRef.current, {
+        clientId: prevClientId,
+        clientName: prevClientName
+      });
+      const candidate = sessionsRef.current.find((s) => s.clientId === nextClientId);
+      if (candidate) {
+        loadSession(candidate);
+      } else {
+        setMessages([]);
+        messagesRef.current = [];
+        setActiveSessionId(null);
+        activeSessionIdRef.current = null;
+        setInput('');
+      }
+      setClientContext('');
+      setIncludeClientContext(false);
+    }
+
+    prevClientIdRef.current = nextClientId;
+    prevClientNameRef.current = nextClientName;
+  }, [selectedClient?.id, selectedClient?.name, loadSession, persistCurrentSession]);
+
+  useEffect(() => {
+    return () => {
+      persistCurrentSession(messagesRef.current, {
+        clientId: prevClientIdRef.current,
+        clientName: prevClientNameRef.current,
+        commitState: false
+      });
+    };
+  }, [persistCurrentSession]);
+
+  const scopedSessions = useMemo(
+    () => sessions.filter((s) => s.clientId === currentClientId),
+    [sessions, currentClientId]
+  );
+
   const handleSend = async (text?: string) => {
     const t = (text ?? input).trim();
     if (!t || sending) return;
     setInput('');
     const userMsg: ChatMessage = { role: 'user', content: t };
-    const nextThread = [...messages, userMsg];
+    const nextThread = [...messagesRef.current, userMsg];
     setMessages(nextThread);
+    persistCurrentSession(nextThread);
     setSending(true);
     try {
-      const { reply, ragError } = await sendNutritionistChat(nextThread, selectedClient?.id ?? null);
+      const { reply, ragError } = await sendNutritionistChat(nextThread, selectedClient?.id ?? null, {
+        extraContext: includeClientContext && clientContext ? clientContext : undefined
+      });
       if (ragError) {
         showToast(`RAG: ${ragError}`, 'warning', 4000);
       }
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply || '(No response)' }]);
+      const finalThread = [...nextThread, { role: 'assistant', content: reply || '(No response)' }];
+      setMessages(finalThread);
+      persistCurrentSession(finalThread);
     } catch (e: any) {
       showToast(e.message || 'Chat failed', 'error');
-      setMessages((prev) => prev.slice(0, -1));
+      const rolledBack = nextThread.slice(0, -1);
+      setMessages(rolledBack);
+      persistCurrentSession(rolledBack);
       setInput(t);
     } finally {
       setSending(false);
@@ -106,17 +273,123 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   const clearChat = () => {
     if (messages.length === 0) return;
     if (!window.confirm('Clear this conversation?')) return;
+    persistCurrentSession();
     setMessages([]);
     setInput('');
+    setActiveSessionId(null);
+    activeSessionIdRef.current = null;
     showToast('Conversation cleared', 'success', 2000);
+  };
+
+  const startNewChat = () => {
+    persistCurrentSession();
+    setMessages([]);
+    messagesRef.current = [];
+    setInput('');
+    setActiveSessionId(null);
+    activeSessionIdRef.current = null;
+    setClientContext('');
+    setIncludeClientContext(false);
+  };
+
+  const loadClientContext = async () => {
+    if (!selectedClient) {
+      showToast('Select a client first', 'warning');
+      return;
+    }
+    setLoadingContext(true);
+    try {
+      const [progressRes, notesRes] = await Promise.all([
+        supabase
+          .from('progress_logs')
+          .select(
+            'date, weight, compliance_score, notes, body_fat_percentage, body_fat_mass, skeletal_muscle_mass, skeletal_muscle_percentage, bmr, metabolic_age, visceral_fat'
+          )
+          .eq('client_id', selectedClient.id)
+          .order('date', { ascending: false }),
+        supabase
+          .from('client_notes')
+          .select('created_at, content, include_in_ai_prompt')
+          .eq('client_id', selectedClient.id)
+          .order('created_at', { ascending: false })
+      ]);
+
+      const progressRows = (progressRes.data || []) as Array<Record<string, unknown>>;
+      const noteRows = (notesRes.data || []) as Array<Record<string, unknown>>;
+      const profileLines = [
+        `Client name: ${selectedClient.name || 'Unknown'}`,
+        `Goal: ${selectedClient.goal || 'N/A'}`,
+        `Age: ${selectedClient.age ?? 'N/A'}`,
+        `Gender: ${selectedClient.gender || 'N/A'}`,
+        `Weight: ${selectedClient.weight ?? 'N/A'} kg`,
+        `Height: ${selectedClient.height ?? 'N/A'} cm`,
+        `Activity level: ${selectedClient.activityLevel || 'N/A'}`,
+        `Allergies: ${selectedClient.allergies || 'N/A'}`,
+        `Preferences: ${selectedClient.preferences || 'N/A'}`,
+        `Medical history: ${selectedClient.medicalHistory || 'N/A'}`,
+        `Medications: ${selectedClient.medications || 'N/A'}`,
+        `Dietary history: ${selectedClient.dietaryHistory || 'N/A'}`,
+        `Social background: ${selectedClient.socialBackground || 'N/A'}`
+      ];
+
+      const progressLines = progressRows.length
+        ? progressRows.map((r) =>
+            [
+              `- ${String(r.date || 'unknown date')}:`,
+              `weight ${r.weight ?? 'N/A'} kg,`,
+              `compliance ${r.compliance_score ?? 'N/A'}%,`,
+              `body fat % ${r.body_fat_percentage ?? 'N/A'},`,
+              `body fat kg ${r.body_fat_mass ?? 'N/A'},`,
+              `muscle kg ${r.skeletal_muscle_mass ?? 'N/A'},`,
+              `muscle % ${r.skeletal_muscle_percentage ?? 'N/A'},`,
+              `BMR ${r.bmr ?? 'N/A'},`,
+              `metabolic age ${r.metabolic_age ?? 'N/A'},`,
+              `visceral fat ${r.visceral_fat ?? 'N/A'}.`,
+              r.notes ? `Notes: ${String(r.notes).slice(0, 200)}` : ''
+            ]
+              .filter(Boolean)
+              .join(' ')
+          )
+        : ['- No progress reports yet.'];
+
+      const noteLines = noteRows.length
+        ? noteRows.map((n) => {
+            const marker = n.include_in_ai_prompt ? '[included]' : '[note]';
+            return `- ${String(n.created_at || '').slice(0, 10)} ${marker} ${String(
+              n.content || ''
+            ).slice(0, 220)}`;
+          })
+        : ['- No client notes.'];
+
+      const context = [
+        'Use this client context when answering nutritionist questions.',
+        '',
+        'PROFILE',
+        ...profileLines,
+        '',
+        `PROGRESS REPORTS (${progressRows.length})`,
+        ...progressLines,
+        '',
+        `CLIENT NOTES (${noteRows.length})`,
+        ...noteLines
+      ].join('\n');
+
+      setClientContext(context);
+      setIncludeClientContext(true);
+      showToast(`Loaded client context (${progressRows.length} progress reports)`, 'success', 2500);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load client context', 'error');
+    } finally {
+      setLoadingContext(false);
+    }
   };
 
   return (
     <div
       className={cn(
         'flex w-full max-w-4xl flex-col mx-auto animate-in fade-in duration-500',
-        /* Space for fixed composer on mobile + safe area */
-        'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-2'
+        /* Space for always-fixed composer + safe area */
+        'pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))]'
       )}
     >
       {/* Header */}
@@ -147,6 +420,30 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
                 </span>
               </div>
             )}
+            {selectedClient && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={loadClientContext}
+                  disabled={loadingContext || sending}
+                >
+                  {loadingContext ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Load full client AI context
+                </Button>
+                <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={includeClientContext}
+                    onChange={(e) => setIncludeClientContext(e.target.checked)}
+                    className="h-4 w-4 accent-[#8C3A36]"
+                    disabled={!clientContext}
+                  />
+                  Include loaded context
+                </label>
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 gap-2 self-start sm:flex-col sm:items-stretch">
             <Button
@@ -175,6 +472,49 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
             </Button>
           </div>
         </CardHeader>
+      </Card>
+
+      {/* Saved chats */}
+      <Card className="mb-3 sm:mb-4">
+        <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold text-slate-800">Saved chats</div>
+              <div className="text-xs text-slate-500">
+                {selectedClient
+                  ? `Showing chats for ${selectedClient.name}`
+                  : 'Showing chats without a selected client'}
+              </div>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={startNewChat}>
+              New chat
+            </Button>
+          </div>
+          {scopedSessions.length === 0 ? (
+            <p className="text-xs text-slate-500">No saved chats yet for this client.</p>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+              {scopedSessions.slice(0, 12).map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => loadSession(s)}
+                  className={cn(
+                    'min-h-[44px] shrink-0 rounded-xl border px-3 py-2 text-left transition-colors',
+                    activeSessionId === s.id
+                      ? 'border-[#8C3A36] bg-[#F9F5F5] text-[#8C3A36]'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-[#8FAA41]/60'
+                  )}
+                >
+                  <div className="max-w-[280px] truncate text-sm font-medium">{s.title}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {new Date(s.updatedAt).toLocaleString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* Suggested prompts — horizontal scroll on narrow screens */}
@@ -294,14 +634,13 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       {/* Composer — fixed on mobile with safe area */}
       <div
         className={cn(
-          'fixed bottom-0 left-0 right-0 z-20 border-t border-slate-200/90 bg-white/95 backdrop-blur-md',
-          'md:relative md:z-auto md:mt-4 md:border-0 md:bg-transparent md:backdrop-blur-none'
+          'fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200/90 bg-white/95 backdrop-blur-md'
         )}
       >
         <div
           className={cn(
-            'mx-auto flex max-w-4xl gap-2 px-3 pt-2',
-            'pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:px-0 md:pb-0 md:pt-0'
+            'mx-auto flex max-w-4xl items-stretch gap-2 px-3 pt-2',
+            'pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]'
           )}
         >
           <label className="sr-only" htmlFor="ai-nutritionist-input">
@@ -320,7 +659,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
             rows={2}
             placeholder="Ask about protocols, macros, client education…"
             className={cn(
-              'min-h-[48px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm',
+              'min-h-[52px] max-h-36 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm',
               'shadow-inner shadow-slate-900/5 placeholder:text-slate-400',
               'focus:border-[#8C3A36] focus:outline-none focus:ring-2 focus:ring-[#8FAA41]/25'
             )}
@@ -332,7 +671,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
             size="icon"
             onClick={() => handleSend()}
             disabled={sending || !input.trim()}
-            className="shrink-0 self-end shadow-md"
+            className="h-[52px] w-[52px] shrink-0 shadow-md"
             title="Send"
             aria-label="Send message"
           >
