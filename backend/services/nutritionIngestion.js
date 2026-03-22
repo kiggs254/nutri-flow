@@ -16,6 +16,19 @@ const NUTRIENT_IDS = {
   fiber: [1079, 291]
 };
 
+const USDA_SYNC_STATUS = {
+  running: false,
+  startedAt: null,
+  finishedAt: null,
+  mode: 'idle',
+  currentPage: null,
+  pagesProcessed: 0,
+  foodsProcessed: 0,
+  errors: [],
+  summaries: [],
+  message: 'idle'
+};
+
 function getApiKey() {
   return process.env.USDA_API_KEY || 'DEMO_KEY';
 }
@@ -228,4 +241,91 @@ export async function syncUsdaFoods(options = {}) {
   }
 
   return { foodsProcessed, errors, summaries };
+}
+
+export function getUsdaSyncStatus() {
+  return {
+    ...USDA_SYNC_STATUS,
+    errors: USDA_SYNC_STATUS.errors.slice(-30),
+    summaries: USDA_SYNC_STATUS.summaries.slice(-30)
+  };
+}
+
+/**
+ * Start an in-process background USDA full sync.
+ * It keeps fetching pages until foods/list returns an empty page or an API error occurs.
+ * @param {{ pageSize?: number, startPage?: number }} options
+ */
+export function startUsdaFullSync(options = {}) {
+  if (USDA_SYNC_STATUS.running) {
+    return { started: false, status: getUsdaSyncStatus() };
+  }
+
+  USDA_SYNC_STATUS.running = true;
+  USDA_SYNC_STATUS.startedAt = new Date().toISOString();
+  USDA_SYNC_STATUS.finishedAt = null;
+  USDA_SYNC_STATUS.mode = 'full_background';
+  USDA_SYNC_STATUS.currentPage = null;
+  USDA_SYNC_STATUS.pagesProcessed = 0;
+  USDA_SYNC_STATUS.foodsProcessed = 0;
+  USDA_SYNC_STATUS.errors = [];
+  USDA_SYNC_STATUS.summaries = [];
+  USDA_SYNC_STATUS.message = 'starting';
+
+  const run = async () => {
+    try {
+      const supabase = requireServiceSupabase();
+      const pageSize = Math.min(Math.max(options.pageSize ?? 200, 10), 200);
+      let page = Math.max(options.startPage ?? 1, 1);
+
+      USDA_SYNC_STATUS.message = 'running';
+      while (true) {
+        USDA_SYNC_STATUS.currentPage = page;
+        let listJson;
+        try {
+          listJson = await listFoodsPage({ pageNumber: page, pageSize });
+        } catch (e) {
+          USDA_SYNC_STATUS.errors.push({ page, message: e.message });
+          USDA_SYNC_STATUS.message = `stopped on page ${page} (list error)`;
+          break;
+        }
+
+        const foods = Array.isArray(listJson) ? listJson : listJson?.foods || [];
+        if (!foods.length) {
+          USDA_SYNC_STATUS.summaries.push({ page, message: 'no foods returned' });
+          USDA_SYNC_STATUS.message = 'completed (reached end of USDA list)';
+          break;
+        }
+
+        let pageProcessed = 0;
+        for (const brief of foods) {
+          const fdcId = brief.fdcId;
+          if (!fdcId) continue;
+          try {
+            const detail = await fetchFoodDetail(fdcId);
+            await upsertFoodAndEmbedding(supabase, detail);
+            USDA_SYNC_STATUS.foodsProcessed++;
+            pageProcessed++;
+            await new Promise((r) => setTimeout(r, 120));
+          } catch (e) {
+            USDA_SYNC_STATUS.errors.push({ fdcId, page, message: e.message });
+          }
+        }
+
+        USDA_SYNC_STATUS.pagesProcessed++;
+        USDA_SYNC_STATUS.summaries.push({ page, count: foods.length, processed: pageProcessed });
+        page += 1;
+      }
+    } catch (e) {
+      USDA_SYNC_STATUS.errors.push({ message: e.message || 'Unknown sync error' });
+      USDA_SYNC_STATUS.message = 'failed';
+    } finally {
+      USDA_SYNC_STATUS.running = false;
+      USDA_SYNC_STATUS.finishedAt = new Date().toISOString();
+      USDA_SYNC_STATUS.currentPage = USDA_SYNC_STATUS.currentPage ?? null;
+    }
+  };
+
+  Promise.resolve().then(run);
+  return { started: true, status: getUsdaSyncStatus() };
 }

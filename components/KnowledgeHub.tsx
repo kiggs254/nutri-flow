@@ -8,6 +8,9 @@ import {
   adminDeletePlatformDocument,
   adminDeleteKnowledgeDocument,
   adminSyncUsda,
+  adminStartFullUsdaSync,
+  adminGetUsdaSyncStatus,
+  type AdminUsdaSyncStatus,
   adminSearchKnowledge
 } from '../services/geminiService';
 import type { KnowledgeBaseSearchMatch } from '../types';
@@ -49,6 +52,8 @@ const KnowledgeHub: React.FC = () => {
   const [userDocs, setUserDocs] = useState<UserDoc[]>([]);
   const [maxPages, setMaxPages] = useState(3);
   const [syncing, setSyncing] = useState(false);
+  const [startingFullSync, setStartingFullSync] = useState(false);
+  const [usdaStatus, setUsdaStatus] = useState<AdminUsdaSyncStatus | null>(null);
   const [platformTitle, setPlatformTitle] = useState('Platform guide');
   const [platformText, setPlatformText] = useState('');
   const [uploadingPlat, setUploadingPlat] = useState(false);
@@ -56,6 +61,7 @@ const KnowledgeHub: React.FC = () => {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<KnowledgeBaseSearchMatch[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const usdaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadSummary = async () => {
     setLoading(true);
@@ -90,9 +96,18 @@ const KnowledgeHub: React.FC = () => {
     }
   }, [showToast]);
 
+  const loadUsdaStatus = useCallback(async () => {
+    try {
+      const status = await adminGetUsdaSyncStatus();
+      setUsdaStatus(status);
+    } catch {
+      // keep UI usable even if status route fails
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadSummary(), loadPlatform(), loadUserDocs()]);
-  }, [loadPlatform, loadUserDocs]);
+    await Promise.all([loadSummary(), loadPlatform(), loadUserDocs(), loadUsdaStatus()]);
+  }, [loadPlatform, loadUserDocs, loadUsdaStatus]);
 
   useEffect(() => {
     void refreshAll();
@@ -121,6 +136,26 @@ const KnowledgeHub: React.FC = () => {
     };
   }, [needsIngestPoll, loadPlatform]);
 
+  useEffect(() => {
+    if (!usdaStatus?.running) {
+      if (usdaPollRef.current) {
+        clearInterval(usdaPollRef.current);
+        usdaPollRef.current = null;
+      }
+      return;
+    }
+    usdaPollRef.current = setInterval(() => {
+      void loadUsdaStatus();
+      void loadSummary();
+    }, 3000);
+    return () => {
+      if (usdaPollRef.current) {
+        clearInterval(usdaPollRef.current);
+        usdaPollRef.current = null;
+      }
+    };
+  }, [usdaStatus?.running, loadUsdaStatus]);
+
   const unifiedRows = useMemo((): UnifiedRow[] => {
     const plat: UnifiedRow[] = platformDocs.map((d) => ({ kind: 'platform', ...d }));
     const usr: UnifiedRow[] = userDocs.map((d) => ({ kind: 'user', ...d }));
@@ -145,6 +180,21 @@ const KnowledgeHub: React.FC = () => {
       showToast(msg, 'error');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleStartFullUsdaSync = async () => {
+    setStartingFullSync(true);
+    try {
+      await adminStartFullUsdaSync({ pageSize: 200, startPage: 1 });
+      showToast('Started USDA full background sync', 'success', 3500);
+      await loadUsdaStatus();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not start full USDA sync';
+      showToast(msg, 'error');
+      await loadUsdaStatus();
+    } finally {
+      setStartingFullSync(false);
     }
   };
 
@@ -289,6 +339,9 @@ const KnowledgeHub: React.FC = () => {
           USDA FoodData Central
         </h2>
         <p className="text-slate-400 text-sm">Requires backend service role. Rate-limited.</p>
+        <div className="text-xs text-slate-500 bg-slate-950 border border-slate-800 rounded-lg p-3">
+          Quick sync is batch-limited by <code>maxPages</code>. Use full background sync to load all USDA pages until exhausted.
+        </div>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-xs text-slate-500 mb-1">Max pages</label>
@@ -310,6 +363,30 @@ const KnowledgeHub: React.FC = () => {
             {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Run USDA sync
           </button>
+          <button
+            type="button"
+            disabled={startingFullSync || !!usdaStatus?.running}
+            onClick={() => void handleStartFullUsdaSync()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-white text-sm font-semibold disabled:opacity-50"
+          >
+            {(startingFullSync || usdaStatus?.running) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {usdaStatus?.running ? 'USDA full sync running…' : 'Run full USDA sync (all pages)'}
+          </button>
+        </div>
+        <div className="text-xs text-slate-400 space-y-1">
+          <div>
+            Status:{' '}
+            <span className={usdaStatus?.running ? 'text-amber-400' : 'text-slate-300'}>
+              {usdaStatus?.message || 'idle'}
+            </span>
+          </div>
+          <div>
+            Progress: {usdaStatus?.foodsProcessed ?? 0} foods, {usdaStatus?.pagesProcessed ?? 0} pages
+            {usdaStatus?.currentPage ? ` (current page ${usdaStatus.currentPage})` : ''}
+          </div>
+          {!!(usdaStatus?.errors?.length) && (
+            <div className="text-red-400">Recent errors: {usdaStatus?.errors.length}</div>
+          )}
         </div>
       </div>
 

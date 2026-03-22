@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireSuperAdmin } from '../middleware/superAdmin.js';
 import { createServiceSupabase } from '../services/supabaseClients.js';
-import { syncUsdaFoods } from '../services/nutritionIngestion.js';
+import { syncUsdaFoods, startUsdaFullSync, getUsdaSyncStatus } from '../services/nutritionIngestion.js';
 import { extractKnowledgeBaseText } from '../services/knowledgeBaseExtract.js';
 import {
   createPlatformDocumentPending,
@@ -215,6 +215,32 @@ router.post('/knowledge/sync-usda', ...adminChain, async (req, res) => {
   } catch (error) {
     console.error('[admin USDA]', error);
     res.status(500).json({ error: error.message || 'USDA sync failed' });
+  }
+});
+
+router.post('/knowledge/sync-usda/full', ...adminChain, async (req, res) => {
+  try {
+    const { pageSize, startPage } = req.body || {};
+    const result = startUsdaFullSync({ pageSize, startPage });
+    if (!result.started) {
+      return res.status(409).json({
+        error: 'USDA full sync is already running',
+        status: result.status
+      });
+    }
+    res.status(202).json(result);
+  } catch (error) {
+    console.error('[admin USDA full]', error);
+    res.status(500).json({ error: error.message || 'USDA full sync failed to start' });
+  }
+});
+
+router.get('/knowledge/sync-usda/status', ...adminChain, async (_req, res) => {
+  try {
+    res.json(getUsdaSyncStatus());
+  } catch (error) {
+    console.error('[admin USDA status]', error);
+    res.status(500).json({ error: error.message || 'USDA status failed' });
   }
 });
 

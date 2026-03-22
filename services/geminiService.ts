@@ -227,6 +227,30 @@ export const adminSyncUsda = async (opts?: {
   return callBackend('/api/admin/knowledge/sync-usda', opts || {});
 };
 
+export interface AdminUsdaSyncStatus {
+  running: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  mode: string;
+  currentPage: number | null;
+  pagesProcessed: number;
+  foodsProcessed: number;
+  errors: unknown[];
+  summaries: unknown[];
+  message: string;
+}
+
+export const adminStartFullUsdaSync = async (opts?: {
+  pageSize?: number;
+  startPage?: number;
+}): Promise<{ started: boolean; status: AdminUsdaSyncStatus }> => {
+  return callBackend('/api/admin/knowledge/sync-usda/full', opts || {});
+};
+
+export const adminGetUsdaSyncStatus = async (): Promise<AdminUsdaSyncStatus> => {
+  return callBackend('/api/admin/knowledge/sync-usda/status', undefined, 'GET');
+};
+
 export const fetchAdminMe = async (): Promise<{ isSuperAdmin: boolean }> => {
   return callBackend('/api/admin/me', undefined, 'GET');
 };
