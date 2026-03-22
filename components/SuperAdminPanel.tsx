@@ -1,15 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchAdminMe,
-  fetchAdminOverview,
-  fetchAdminNutritionists,
-  fetchAdminClients,
-  fetchAdminMealPlans,
-  fetchAdminMealPlan,
-  adminDeleteMealPlan,
-  fetchAdminFoodLogs,
-  fetchAdminKnowledgeDocuments,
-  adminDeleteKnowledgeDocument,
+  fetchAdminKnowledgeSummary,
   fetchAdminPlatformDocuments,
   adminUploadPlatformDocument,
   adminUploadPlatformText,
@@ -17,57 +9,37 @@ import {
   adminSyncUsda
 } from '../services/geminiService';
 import { useToast } from '../utils/toast';
-import {
-  Shield,
-  LayoutDashboard,
-  Users,
-  UserCircle,
-  UtensilsCrossed,
-  Apple,
-  BookOpen,
-  LogOut,
-  Loader2,
-  Trash2,
-  RefreshCw,
-  ChevronLeft,
-  Database,
-  Upload
-} from 'lucide-react';
-
-type Section = 'overview' | 'nutritionists' | 'clients' | 'meal_plans' | 'food_logs' | 'knowledge';
+import { Shield, BookOpen, LogOut, Loader2, Trash2, RefreshCw, ChevronLeft, Database, Upload } from 'lucide-react';
 
 interface SuperAdminPanelProps {
   onLogout: () => void;
 }
 
+type PlatformDoc = {
+  id: string;
+  title: string;
+  doc_type: string;
+  file_name: string | null;
+  chunk_count: number;
+  created_by: string | null;
+  created_at: string;
+  ingest_status?: string;
+  ingest_error?: string | null;
+};
+
 const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
   const { showToast } = useToast();
   const [checked, setChecked] = useState(false);
   const [allowed, setAllowed] = useState(false);
-  const [section, setSection] = useState<Section>('overview');
   const [loading, setLoading] = useState(false);
-  const [overview, setOverview] = useState<Record<string, number> | null>(null);
-  const [nutritionists, setNutritionists] = useState<Array<{ id: string; email?: string; created_at?: string }>>([]);
-  const [nutPage, setNutPage] = useState(1);
-  const [nutHasMore, setNutHasMore] = useState(false);
-  const [clients, setClients] = useState<any[]>([]);
-  const [clPage, setClPage] = useState(1);
-  const [clTotal, setClTotal] = useState(0);
-  const [filterUserId, setFilterUserId] = useState('');
-  const [mealPlans, setMealPlans] = useState<any[]>([]);
-  const [mpPage, setMpPage] = useState(1);
-  const [mpTotal, setMpTotal] = useState(0);
-  const [planDetail, setPlanDetail] = useState<any | null>(null);
-  const [foodLogs, setFoodLogs] = useState<any[]>([]);
-  const [flPage, setFlPage] = useState(1);
-  const [flTotal, setFlTotal] = useState(0);
-  const [userDocs, setUserDocs] = useState<any[]>([]);
-  const [platformDocs, setPlatformDocs] = useState<any[]>([]);
+  const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [platformDocs, setPlatformDocs] = useState<PlatformDoc[]>([]);
   const [maxPages, setMaxPages] = useState(3);
   const [syncing, setSyncing] = useState(false);
   const [platformTitle, setPlatformTitle] = useState('Platform guide');
   const [platformText, setPlatformText] = useState('');
   const [uploadingPlat, setUploadingPlat] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkAccess = useCallback(async () => {
     try {
@@ -84,154 +56,55 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
     checkAccess();
   }, [checkAccess]);
 
-  const loadOverview = async () => {
+  const loadSummary = async () => {
     setLoading(true);
     try {
-      const o = await fetchAdminOverview();
-      setOverview(o);
+      const s = await fetchAdminKnowledgeSummary();
+      setSummary(s as Record<string, number>);
     } catch (e: any) {
-      showToast(e.message || 'Failed to load overview', 'error');
+      showToast(e.message || 'Failed to load stats', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  const loadPlatform = useCallback(async () => {
+    try {
+      const p = await fetchAdminPlatformDocuments();
+      setPlatformDocs((p.documents || []) as PlatformDoc[]);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load documents', 'error');
+    }
+  }, [showToast]);
 
   useEffect(() => {
     if (!allowed) return;
-    if (section === 'overview') loadOverview();
-  }, [allowed, section]);
+    loadSummary();
+    loadPlatform();
+  }, [allowed, loadPlatform]);
 
-  const loadNutritionists = async (page: number) => {
-    setLoading(true);
-    try {
-      const r = await fetchAdminNutritionists(page, 50);
-      setNutritionists(r.users || []);
-      setNutPage(page);
-      setNutHasMore(!!r.hasMore);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const needsIngestPoll = platformDocs.some(
+    (d) => d.ingest_status === 'pending' || d.ingest_status === 'processing'
+  );
 
   useEffect(() => {
-    if (allowed && section === 'nutritionists') loadNutritionists(1);
-  }, [allowed, section]);
-
-  const loadClients = async (page: number) => {
-    setLoading(true);
-    try {
-      const r = await fetchAdminClients(page, 40, filterUserId.trim() || undefined);
-      setClients(r.clients || []);
-      setClPage(page);
-      setClTotal(r.total ?? 0);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    } finally {
-      setLoading(false);
+    if (!allowed || !needsIngestPoll) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
     }
-  };
-
-  useEffect(() => {
-    if (allowed && section === 'clients') loadClients(1);
-  }, [allowed, section]);
-
-  const loadMealPlans = async (page: number) => {
-    setLoading(true);
-    try {
-      const r = await fetchAdminMealPlans(page, 30);
-      setMealPlans(r.mealPlans || []);
-      setMpPage(page);
-      setMpTotal(r.total ?? 0);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (allowed && section === 'meal_plans') loadMealPlans(1);
-  }, [allowed, section]);
-
-  const loadFoodLogs = async (page: number) => {
-    setLoading(true);
-    try {
-      const r = await fetchAdminFoodLogs(page, 40);
-      setFoodLogs(r.foodLogs || []);
-      setFlPage(page);
-      setFlTotal(r.total ?? 0);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (allowed && section === 'food_logs') loadFoodLogs(1);
-  }, [allowed, section]);
-
-  const loadKnowledge = async () => {
-    setLoading(true);
-    try {
-      const [u, p] = await Promise.all([fetchAdminKnowledgeDocuments(), fetchAdminPlatformDocuments()]);
-      setUserDocs(u.documents || []);
-      setPlatformDocs(p.documents || []);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (allowed && section === 'knowledge') loadKnowledge();
-  }, [allowed, section]);
-
-  const openPlan = async (id: string) => {
-    try {
-      const r = await fetchAdminMealPlan(id);
-      setPlanDetail(r.mealPlan);
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    }
-  };
-
-  const handleDeletePlan = async (id: string) => {
-    if (!confirm('Permanently delete this meal plan?')) return;
-    try {
-      await adminDeleteMealPlan(id);
-      showToast('Deleted', 'success');
-      setPlanDetail(null);
-      loadMealPlans(mpPage);
-    } catch (e: any) {
-      showToast(e.message || 'Delete failed', 'error');
-    }
-  };
-
-  const handleDeleteUserDoc = async (id: string) => {
-    if (!confirm('Delete this nutritionist document and its embeddings?')) return;
-    try {
-      await adminDeleteKnowledgeDocument(id);
-      showToast('Removed', 'success');
-      loadKnowledge();
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    }
-  };
-
-  const handleDeletePlatformDoc = async (id: string) => {
-    if (!confirm('Delete platform document?')) return;
-    try {
-      await adminDeletePlatformDocument(id);
-      showToast('Removed', 'success');
-      loadKnowledge();
-    } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
-    }
-  };
+    pollRef.current = setInterval(() => {
+      loadPlatform();
+    }, 2000);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [allowed, needsIngestPoll, loadPlatform]);
 
   const handleUsda = async () => {
     setSyncing(true);
@@ -243,7 +116,7 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
         errCount ? 'warning' : 'success',
         8000
       );
-      loadOverview();
+      loadSummary();
     } catch (e: any) {
       showToast(e.message || 'USDA failed', 'error');
     } finally {
@@ -260,9 +133,9 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
     setUploadingPlat(true);
     try {
       await adminUploadPlatformText({ title: platformTitle, docType: 'guide', textContent: t });
-      showToast('Platform document indexed', 'success');
+      showToast('Document queued — indexing in background', 'success');
       setPlatformText('');
-      loadKnowledge();
+      await loadPlatform();
     } catch (e: any) {
       showToast(e.message || 'Failed', 'error');
     } finally {
@@ -293,12 +166,24 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
         mimeType: file.type || 'application/octet-stream',
         base64Content: base64
       });
-      showToast('Uploaded', 'success');
-      loadKnowledge();
+      showToast('Upload queued — indexing in background', 'success');
+      await loadPlatform();
     } catch (err: any) {
       showToast(err.message || 'Upload failed', 'error');
     } finally {
       setUploadingPlat(false);
+    }
+  };
+
+  const handleDeletePlatformDoc = async (id: string) => {
+    if (!confirm('Delete this platform document and its embeddings?')) return;
+    try {
+      await adminDeletePlatformDocument(id);
+      showToast('Removed', 'success');
+      loadPlatform();
+      loadSummary();
+    } catch (e: any) {
+      showToast(e.message || 'Failed', 'error');
     }
   };
 
@@ -338,40 +223,16 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
     );
   }
 
-  const nav = [
-    { id: 'overview' as Section, label: 'Overview', icon: LayoutDashboard },
-    { id: 'nutritionists' as Section, label: 'Nutritionists', icon: Users },
-    { id: 'clients' as Section, label: 'All clients', icon: UserCircle },
-    { id: 'meal_plans' as Section, label: 'Meal plans', icon: UtensilsCrossed },
-    { id: 'food_logs' as Section, label: 'Food logs', icon: Apple },
-    { id: 'knowledge' as Section, label: 'Knowledge base', icon: BookOpen }
-  ];
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
       <aside className="w-56 border-r border-slate-800 flex flex-col shrink-0">
         <div className="p-4 border-b border-slate-800 flex items-center gap-2">
           <Shield className="w-6 h-6 text-amber-500" />
-          <span className="font-bold text-sm">Super Admin</span>
+          <span className="font-bold text-sm">Platform KB</span>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
-          {nav.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                setSection(item.id);
-                setPlanDetail(null);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                section === item.id ? 'bg-amber-600/20 text-amber-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        <div className="flex-1 p-4 text-xs text-slate-500">
+          Manage global RAG: USDA foods, platform training documents.
+        </div>
         <div className="p-2 border-t border-slate-800 space-y-1">
           <a
             href="#/"
@@ -394,365 +255,142 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onLogout }) => {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-6 md:p-8">
-        {loading && section !== 'overview' && (
-          <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-lg text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading…
-          </div>
-        )}
+      <main className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <BookOpen className="w-8 h-8 text-amber-500" />
+            Platform knowledge base
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">
+            Documents are chunked and embedded in the background after upload. USDA sync runs on the server (may take several
+            minutes).
+          </p>
+        </div>
 
-        {section === 'overview' && (
-          <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-white">Platform overview</h1>
-            {loading && !overview ? (
-              <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  ['Auth users (sample)', overview?.usersCount],
-                  ['Clients', overview?.clientsCount],
-                  ['Meal plans', overview?.mealPlansCount],
-                  ['Food logs', overview?.foodLogsCount],
-                  ['User KB docs', overview?.userKnowledgeDocumentsCount],
-                  ['Foods (DB)', overview?.foodsCount],
-                  ['Food embeddings', overview?.foodEmbeddingsCount],
-                  ['Platform docs', overview?.platformDocumentsCount]
-                ].map(([k, v]) => (
-                  <div key={String(k)} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                    <div className="text-xs text-slate-500 uppercase font-bold">{k}</div>
-                    <div className="text-2xl font-bold text-white mt-1">{v ?? '—'}</div>
-                  </div>
-                ))}
+        {loading && !summary ? (
+          <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              ['Foods (DB)', summary?.foodsCount],
+              ['Food embeddings', summary?.foodEmbeddingsCount],
+              ['Platform docs', summary?.platformDocumentsCount],
+              ['Platform embeddings', summary?.platformEmbeddingsCount]
+            ].map(([k, v]) => (
+              <div key={String(k)} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs text-slate-500 uppercase font-bold">{k}</div>
+                <div className="text-2xl font-bold text-white mt-1">{v ?? '—'}</div>
               </div>
-            )}
+            ))}
           </div>
         )}
 
-        {section === 'nutritionists' && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-bold">Nutritionists (auth users)</h1>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={nutPage <= 1}
-                onClick={() => loadNutritionists(nutPage - 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={!nutHasMore}
-                onClick={() => loadNutritionists(nutPage + 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-800/80 text-left text-slate-400">
-                  <tr>
-                    <th className="p-3">Email</th>
-                    <th className="p-3">User ID</th>
-                    <th className="p-3">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nutritionists.map((u) => (
-                    <tr key={u.id} className="border-t border-slate-800">
-                      <td className="p-3">{u.email || '—'}</td>
-                      <td className="p-3 font-mono text-xs text-slate-500 break-all">{u.id}</td>
-                      <td className="p-3 text-slate-400">{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            loadSummary();
+            loadPlatform();
+          }}
+          className="text-sm text-amber-400 hover:underline"
+        >
+          Refresh stats &amp; list
+        </button>
 
-        {section === 'clients' && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-bold">All clients</h1>
-            <div className="flex flex-wrap gap-2 items-end">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <h2 className="font-bold flex items-center gap-2 text-amber-400">
+            <Database className="w-5 h-5" />
+            USDA FoodData Central
+          </h2>
+          <p className="text-slate-400 text-sm">Requires backend service role. Rate-limited.</p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Max pages</label>
               <input
-                type="text"
-                placeholder="Filter by nutritionist user_id"
-                value={filterUserId}
-                onChange={(e) => setFilterUserId(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm flex-1 min-w-[200px]"
+                type="number"
+                min={1}
+                max={30}
+                value={maxPages}
+                onChange={(e) => setMaxPages(Number(e.target.value) || 1)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 w-24 text-sm"
               />
-              <button type="button" onClick={() => loadClients(1)} className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium">
-                Apply
-              </button>
             </div>
-            <p className="text-slate-500 text-sm">Total: {clTotal}</p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={clPage <= 1}
-                onClick={() => loadClients(clPage - 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={clPage * 40 >= clTotal}
-                onClick={() => loadClients(clPage + 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-slate-800/80 text-left text-slate-400">
-                  <tr>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Owner user_id</th>
-                    <th className="p-2">Goal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {clients.map((c: any) => (
-                    <tr key={c.id} className="border-t border-slate-800">
-                      <td className="p-2 font-medium">{c.name}</td>
-                      <td className="p-2 font-mono text-xs text-slate-500">{c.user_id}</td>
-                      <td className="p-2 text-slate-400">{c.goal || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={handleUsda}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Run USDA sync
+            </button>
           </div>
-        )}
+        </div>
 
-        {section === 'meal_plans' && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-bold">Meal plans</h1>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={mpPage <= 1}
-                onClick={() => loadMealPlans(mpPage - 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={mpPage * 30 >= mpTotal}
-                onClick={() => loadMealPlans(mpPage + 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-            <p className="text-slate-500 text-sm">Total: {mpTotal}</p>
-            <div className="grid lg:grid-cols-2 gap-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden max-h-[70vh] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-800/80 text-left text-slate-400 sticky top-0">
-                    <tr>
-                      <th className="p-2">Label</th>
-                      <th className="p-2">Client</th>
-                      <th className="p-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mealPlans.map((p: any) => (
-                      <tr key={p.id} className="border-t border-slate-800">
-                        <td className="p-2">{p.day_label || '—'}</td>
-                        <td className="p-2 text-slate-400">{p.clients?.name || p.client_id}</td>
-                        <td className="p-2">
-                          <button type="button" onClick={() => openPlan(p.id)} className="text-amber-400 text-xs hover:underline mr-2">
-                            View
-                          </button>
-                          <button type="button" onClick={() => handleDeletePlan(p.id)} className="text-red-400 text-xs hover:underline">
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 max-h-[70vh] overflow-y-auto">
-                {planDetail ? (
-                  <>
-                    <div className="flex justify-between items-start mb-2">
-                      <h2 className="font-bold text-amber-400">Plan JSON</h2>
-                      <button type="button" onClick={() => setPlanDetail(null)} className="text-slate-500 text-sm">
-                        Close
-                      </button>
-                    </div>
-                    <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">{JSON.stringify(planDetail.plan_data, null, 2)}</pre>
-                  </>
-                ) : (
-                  <p className="text-slate-500 text-sm">Select a plan to view.</p>
-                )}
-              </div>
-            </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <h2 className="font-bold flex items-center gap-2">Platform training documents (global RAG)</h2>
+          <p className="text-slate-400 text-sm">Visible to all nutritionists in meal plans and AI chat.</p>
+          <input
+            type="text"
+            value={platformTitle}
+            onChange={(e) => setPlatformTitle(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm"
+            placeholder="Title"
+          />
+          <textarea
+            value={platformText}
+            onChange={(e) => setPlatformText(e.target.value)}
+            rows={5}
+            placeholder="Paste training content…"
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={uploadingPlat}
+              onClick={handlePlatformPaste}
+              className="px-4 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium disabled:opacity-50"
+            >
+              Queue pasted text
+            </button>
+            <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-dashed border-slate-600 cursor-pointer text-sm">
+              {uploadingPlat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Upload PDF/DOCX/TXT
+              <input type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={handlePlatformFile} disabled={uploadingPlat} />
+            </label>
           </div>
-        )}
 
-        {section === 'food_logs' && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-bold">Food logs</h1>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={flPage <= 1}
-                onClick={() => loadFoodLogs(flPage - 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={flPage * 40 >= flTotal}
-                onClick={() => loadFoodLogs(flPage + 1)}
-                className="px-3 py-1 rounded bg-slate-800 text-sm disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-800/80 text-left text-slate-400">
-                  <tr>
-                    <th className="p-2">Client</th>
-                    <th className="p-2">Notes</th>
-                    <th className="p-2">Analysis</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {foodLogs.map((f: any) => (
-                    <tr key={f.id} className="border-t border-slate-800 align-top">
-                      <td className="p-2 font-mono text-xs">{f.client_id}</td>
-                      <td className="p-2 text-slate-400 max-w-[200px] truncate">{f.notes || '—'}</td>
-                      <td className="p-2 text-slate-500 text-xs max-w-md line-clamp-3">{f.ai_analysis || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {section === 'knowledge' && (
-          <div className="space-y-8">
-            <h1 className="text-2xl font-bold">Knowledge base</h1>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-              <h2 className="font-bold flex items-center gap-2 text-amber-400">
-                <Database className="w-5 h-5" />
-                USDA FoodData Central
-              </h2>
-              <p className="text-slate-400 text-sm">Requires backend service role. Rate-limited.</p>
-              <div className="flex flex-wrap gap-3 items-end">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Max pages</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={maxPages}
-                    onChange={(e) => setMaxPages(Number(e.target.value) || 1)}
-                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 w-24 text-sm"
-                  />
+          <ul className="divide-y divide-slate-800 border border-slate-800 rounded-lg">
+            {platformDocs.map((d) => (
+              <li key={d.id} className="p-3 flex justify-between gap-2 items-start">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{d.title}</div>
+                  <div className="text-xs text-slate-500">
+                    {d.ingest_status === 'ready' && <>{d.chunk_count} chunks · </>}
+                    {d.ingest_status && d.ingest_status !== 'ready' && (
+                      <span className="text-amber-400/90">
+                        {d.ingest_status === 'pending' && 'Queued… '}
+                        {d.ingest_status === 'processing' && 'Indexing… '}
+                        {d.ingest_status === 'failed' && 'Failed — '}
+                      </span>
+                    )}
+                    {new Date(d.created_at).toLocaleString()}
+                  </div>
+                  {d.ingest_status === 'failed' && d.ingest_error && (
+                    <div className="text-xs text-red-400 mt-1 break-words">{d.ingest_error}</div>
+                  )}
                 </div>
                 <button
                   type="button"
-                  disabled={syncing}
-                  onClick={handleUsda}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold disabled:opacity-50"
+                  onClick={() => handleDeletePlatformDoc(d.id)}
+                  className="p-2 text-red-400 hover:bg-slate-800 rounded-lg shrink-0"
+                  title="Delete"
                 >
-                  {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Run USDA sync
+                  <Trash2 className="w-4 h-4" />
                 </button>
-                <button type="button" onClick={loadOverview} className="text-sm text-slate-400 hover:text-white">
-                  Refresh stats
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-              <h2 className="font-bold flex items-center gap-2">Platform training documents (global RAG)</h2>
-              <p className="text-slate-400 text-sm">Visible to all nutritionists in meal plans and AI chat.</p>
-              <input
-                type="text"
-                value={platformTitle}
-                onChange={(e) => setPlatformTitle(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm"
-                placeholder="Title"
-              />
-              <textarea
-                value={platformText}
-                onChange={(e) => setPlatformText(e.target.value)}
-                rows={5}
-                placeholder="Paste training content…"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={uploadingPlat}
-                  onClick={handlePlatformPaste}
-                  className="px-4 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium"
-                >
-                  Index pasted text
-                </button>
-                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-dashed border-slate-600 cursor-pointer text-sm">
-                  {uploadingPlat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  Upload PDF/DOCX/TXT
-                  <input type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={handlePlatformFile} disabled={uploadingPlat} />
-                </label>
-              </div>
-              <ul className="divide-y divide-slate-800 border border-slate-800 rounded-lg">
-                {platformDocs.map((d: any) => (
-                  <li key={d.id} className="p-3 flex justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{d.title}</div>
-                      <div className="text-xs text-slate-500">
-                        {d.chunk_count} chunks · {new Date(d.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => handleDeletePlatformDoc(d.id)} className="p-2 text-red-400 hover:bg-slate-800 rounded-lg shrink-0">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="font-bold mb-4">All nutritionist-uploaded documents</h2>
-              <button type="button" onClick={loadKnowledge} className="text-sm text-amber-400 mb-4 hover:underline">
-                Refresh list
-              </button>
-              <ul className="divide-y divide-slate-800">
-                {userDocs.map((d: any) => (
-                  <li key={d.id} className="py-3 flex justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium">{d.title}</div>
-                      <div className="text-xs text-slate-500 font-mono break-all">owner: {d.user_id}</div>
-                      <div className="text-xs text-slate-500">
-                        {d.chunk_count} chunks · {new Date(d.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => handleDeleteUserDoc(d.id)} className="p-2 text-red-400 hover:bg-slate-800 rounded-lg shrink-0">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
+              </li>
+            ))}
+          </ul>
+        </div>
       </main>
     </div>
   );

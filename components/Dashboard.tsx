@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Brain, Activity, MessageCircle, CreditCard, 
-  Settings, LogOut, Menu, X, Bell, Library, Sparkles, Shield
+  Settings, LogOut, Menu, X, Bell, Library, Sparkles
 } from 'lucide-react';
 import ClientList from './ClientList';
 // FIX: Changed to a named import for MealPlanner as it does not have a default export.
@@ -459,13 +459,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         )}
 
         <div className="p-4 border-t border-slate-800 space-y-1">
-          <a
-            href="#/admin"
-            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors"
-          >
-            <Shield className="w-5 h-5" />
-            Super admin
-          </a>
           <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
@@ -575,14 +568,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                 {item.label}
               </button>
             ))}
-            <a
-              href="#/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-lg font-medium rounded-lg text-amber-400/90 hover:bg-slate-800"
-            >
-              <Shield className="w-6 h-6" />
-              Super admin
-            </a>
             <button
               onClick={() => {
                 setActiveTab('settings');

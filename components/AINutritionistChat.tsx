@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { MessageCircle, Send, Loader2, Sparkles, Copy, User } from 'lucide-react';
-import { sendNutritionistChat, ChatMessage } from '../services/geminiService';
+import {
+  sendNutritionistChat,
+  ChatMessage,
+  getAIProvider,
+  AI_PROVIDER_CHANGED_EVENT,
+  type AIProvider
+} from '../services/geminiService';
 import { Client } from '../types';
 import { useToast } from '../utils/toast';
 
@@ -16,12 +22,35 @@ interface AINutritionistChatProps {
   selectedClient: Client | null;
 }
 
+function chatProviderLabel(p: AIProvider): string {
+  switch (p) {
+    case 'openai':
+      return 'OpenAI (GPT-4o)';
+    case 'deepseek':
+      return 'DeepSeek';
+    default:
+      return 'Google Gemini';
+  }
+}
+
 export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selectedClient }) => {
   const { showToast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<AIProvider>(() => getAIProvider());
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const sync = () => setActiveProvider(getAIProvider());
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener(AI_PROVIDER_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(AI_PROVIDER_CHANGED_EVENT, sync);
+    };
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,6 +98,11 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
         <p className="text-slate-600 text-sm mt-1">
           Professional nutrition coaching assistant. Answers use your knowledge base (foods, your docs, and platform training
           material) when relevant. Not medical advice.
+        </p>
+        <p className="text-xs text-slate-500 mt-2">
+          Replies use your{' '}
+          <strong className="text-slate-700">Settings → AI provider</strong> choice:{' '}
+          <span className="text-[#8C3A36] font-medium">{chatProviderLabel(activeProvider)}</span>
         </p>
         {selectedClient && (
           <div className="mt-3 flex items-center gap-2 text-sm bg-[#F9F5F5] border border-stone-200 rounded-lg px-3 py-2 text-[#8C3A36]">

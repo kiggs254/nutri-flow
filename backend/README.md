@@ -129,7 +129,7 @@ All endpoints require authentication via `Authorization: Bearer <supabase_jwt_to
 - Same extended response shape as generate.
 
 #### Nutrition knowledge base (RAG)
-- Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql` (super admins, platform docs, `match_nutrition_embeddings` update for platform + per-user docs + food).
+- Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql`, then `migrations/add_platform_ingest_status.sql` (async platform doc indexing status).
 - `POST /api/ai/knowledge-base/upload` — body: `{ title?, docType?, fileName, mimeType, base64Content }` or `{ title?, docType?, textContent }`
 - `GET /api/ai/knowledge-base/documents`
 - `DELETE /api/ai/knowledge-base/documents/:id`
@@ -141,19 +141,25 @@ USDA sync is **super-admin only**: `POST /api/admin/knowledge/sync-usda` (requir
 Optional: `USDA_API_KEY` in `.env` for higher FoodData Central rate limits (defaults to `DEMO_KEY`).
 
 #### AI Nutritionist chat (RAG)
-- `POST /api/ai/nutritionist-chat` — body: `{ provider, messages: [{ role, content }], clientId? }` (JWT required). Retrieves KB context (food, platform, your documents) before the model reply.
+- `POST /api/ai/nutritionist-chat` — body: `{ provider: 'gemini' | 'openai' | 'deepseek', messages: [{ role, content }], clientId? }` (JWT required). Retrieves KB context (food, platform, your documents) before the model reply. `provider` must match a configured API key.
 
-#### Super admin API (`/api/admin/*`)
+#### Super admin URL (frontend)
+
+Super admins use the **same login** as nutritionists, then open the app with the hash route:
+
+- **`<APP_ORIGIN>/#/admin`** — e.g. `https://your-domain.com/#/admin` or `http://localhost:5173/#/admin`
+
+Access is denied unless the user’s UUID is in `public.super_admins`. This URL is intentionally not linked from the main dashboard.
+
+#### Super admin API — platform knowledge base only (`/api/admin/*`)
+
 All routes require `Authorization: Bearer <access_token>` and a matching `user_id` in `public.super_admins`. **Bootstrap** (once): in Supabase SQL editor, `INSERT INTO public.super_admins (user_id) VALUES ('<auth.users id>');`
 
-- `GET /api/admin/me` — `{ isSuperAdmin: true }`
-- `GET /api/admin/overview`
-- `GET /api/admin/nutritionists?page=&perPage=`
-- `GET /api/admin/clients?page=&perPage=&user_id=`
-- `GET /api/admin/meal-plans`, `GET /api/admin/meal-plans/:id`, `DELETE /api/admin/meal-plans/:id`
-- `GET /api/admin/food-logs?page=&perPage=`
-- `GET /api/admin/knowledge/documents`, `DELETE /api/admin/knowledge/documents/:id`
-- `GET /api/admin/knowledge/platform-documents`, `POST /api/admin/knowledge/platform-documents` (JSON body like KB upload), `DELETE /api/admin/knowledge/platform-documents/:id`
+- `GET /api/admin/me` — `{ isSuperAdmin: true | false }`
+- `GET /api/admin/knowledge/summary` — foods / embeddings / platform doc counts
+- `GET /api/admin/knowledge/platform` — list platform documents (includes `ingest_status`, `ingest_error`)
+- `POST /api/admin/knowledge/platform/upload` — same JSON body as nutritionist KB upload (`textContent` or `base64Content` + `mimeType`). Returns **`202 Accepted`** with `{ documentId, ingestStatus: 'pending' }`; chunking and embedding run **in the background**. Poll `GET /api/admin/knowledge/platform` until `ingest_status` is `ready` or `failed`.
+- `DELETE /api/admin/knowledge/platform/:id`
 - `POST /api/admin/knowledge/sync-usda` — body: `{ maxPages?, pageSize?, startPage? }`
 
 `SUPABASE_SERVICE_ROLE_KEY` is **required** for admin routes (and USDA / platform ingest).

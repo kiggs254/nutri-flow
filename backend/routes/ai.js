@@ -1292,8 +1292,14 @@ router.post('/nutritionist-chat', authenticate, async (req, res) => {
   try {
     const { provider, messages, clientId } = req.body || {};
 
+    const allowedChatProviders = ['gemini', 'openai', 'deepseek'];
     if (!provider) {
       return res.status(400).json({ error: 'Provider is required' });
+    }
+    if (!allowedChatProviders.includes(provider)) {
+      return res.status(400).json({
+        error: `Invalid provider. Use one of: ${allowedChatProviders.join(', ')}`
+      });
     }
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages must be a non-empty array' });
@@ -1356,7 +1362,7 @@ router.post('/nutritionist-chat', authenticate, async (req, res) => {
         temperature: 0.65,
         maxTokens: 4096
       });
-    } else {
+    } else if (provider === 'deepseek') {
       const dsMessages = [{ role: 'system', content: systemWithRag }];
       for (const m of capped) {
         dsMessages.push({
@@ -1369,6 +1375,8 @@ router.post('/nutritionist-chat', authenticate, async (req, res) => {
         temperature: 0.65,
         maxTokens: 4096
       });
+    } else {
+      return res.status(400).json({ error: 'Invalid provider' });
     }
 
     res.json({

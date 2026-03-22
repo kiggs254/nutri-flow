@@ -5,12 +5,18 @@ import { supabase } from './supabase';
 export type AIProvider = 'gemini' | 'openai' | 'deepseek';
 const PROVIDER_KEY = 'nutriflow_ai_provider';
 
+/** Dispatch after changing provider in Settings so AI Nutritionist updates in the same tab */
+export const AI_PROVIDER_CHANGED_EVENT = 'nutriflow-ai-provider';
+
 export const getAIProvider = (): AIProvider => {
   return (localStorage.getItem(PROVIDER_KEY) as AIProvider) || 'gemini';
 };
 
 export const setAIProvider = (provider: AIProvider) => {
   localStorage.setItem(PROVIDER_KEY, provider);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AI_PROVIDER_CHANGED_EVENT));
+  }
 };
 
 // --- Backend Configuration ---
@@ -247,42 +253,13 @@ export const fetchAdminMe = async (): Promise<{ isSuperAdmin: boolean }> => {
   return callBackend('/api/admin/me', undefined, 'GET');
 };
 
-export const fetchAdminOverview = async () => {
-  return callBackend('/api/admin/overview', undefined, 'GET');
-};
-
-export const fetchAdminNutritionists = async (page = 1, perPage = 50) => {
-  return callBackend(`/api/admin/nutritionists?page=${page}&perPage=${perPage}`, undefined, 'GET');
-};
-
-export const fetchAdminClients = async (page = 1, limit = 40, userId?: string) => {
-  let q = `/api/admin/clients?page=${page}&limit=${limit}`;
-  if (userId) q += `&user_id=${encodeURIComponent(userId)}`;
-  return callBackend(q, undefined, 'GET');
-};
-
-export const fetchAdminMealPlans = async (page = 1, limit = 30) => {
-  return callBackend(`/api/admin/meal-plans?page=${page}&limit=${limit}`, undefined, 'GET');
-};
-
-export const fetchAdminMealPlan = async (id: string) => {
-  return callBackend(`/api/admin/meal-plans/${id}`, undefined, 'GET');
-};
-
-export const adminDeleteMealPlan = async (id: string) => {
-  await callBackend(`/api/admin/meal-plans/${id}`, undefined, 'DELETE');
-};
-
-export const fetchAdminFoodLogs = async (page = 1, limit = 40) => {
-  return callBackend(`/api/admin/food-logs?page=${page}&limit=${limit}`, undefined, 'GET');
-};
-
-export const fetchAdminKnowledgeDocuments = async () => {
-  return callBackend('/api/admin/knowledge/documents', undefined, 'GET');
-};
-
-export const adminDeleteKnowledgeDocument = async (id: string) => {
-  await callBackend(`/api/admin/knowledge/documents/${id}`, undefined, 'DELETE');
+export const fetchAdminKnowledgeSummary = async (): Promise<{
+  foodsCount: number;
+  foodEmbeddingsCount: number;
+  platformDocumentsCount: number;
+  platformEmbeddingsCount: number;
+}> => {
+  return callBackend('/api/admin/knowledge/summary', undefined, 'GET');
 };
 
 export const fetchAdminPlatformDocuments = async () => {
@@ -295,11 +272,15 @@ export const adminUploadPlatformDocument = async (params: {
   fileName: string;
   mimeType: string;
   base64Content: string;
-}) => {
+}): Promise<{ documentId: string; ingestStatus: string; accepted?: boolean }> => {
   return callBackend('/api/admin/knowledge/platform/upload', params);
 };
 
-export const adminUploadPlatformText = async (params: { title?: string; docType?: string; textContent: string }) => {
+export const adminUploadPlatformText = async (params: {
+  title?: string;
+  docType?: string;
+  textContent: string;
+}): Promise<{ documentId: string; ingestStatus: string; accepted?: boolean }> => {
   return callBackend('/api/admin/knowledge/platform/upload', params);
 };
 

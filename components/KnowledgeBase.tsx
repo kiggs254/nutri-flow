@@ -141,11 +141,9 @@ const KnowledgeBase: React.FC = () => {
           Nutrition knowledge base
         </h1>
         <p className="text-slate-600 text-sm mt-1">
-          Upload your own guides for RAG (retrieval) in meal plans and AI chat. Platform-wide USDA food index and training docs are managed in the{' '}
-          <a href="#/admin" className="text-[#8C3A36] font-medium underline">
-            super admin panel
-          </a>{' '}
-          (super admins only). Run SQL migrations on Supabase if you have not already.
+          Upload your own guides for RAG (retrieval) in meal plans and AI chat. Platform-wide USDA food index and training
+          documents are maintained separately by your operator (bookmark the admin URL they provide — it is not linked from this
+          app). Run SQL migrations on Supabase if you have not already.
         </p>
       </div>
 

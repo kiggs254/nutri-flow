@@ -71,6 +71,10 @@ NutriTherapy Solutions is a comprehensive management platform designed for nutri
 - **AI Provider Switch**: By default, the app uses Google Gemini. You can switch to OpenAI in the Account Settings if you have an API key configured.
 - **Client Portal**: Clients can access their personalized view via a generated link (simulated in the current build via URL hashing).
 
+### Super admin (platform knowledge base)
+
+Operators with a row in `public.super_admins` open **`http://localhost:5173/#/admin`** in development, or **`https://<your-production-domain>/#/admin`** in production. The same Supabase account is used as for the dashboard; there is no separate login. The main app does not link to this URL.
+
 ## 📦 Scripts
 
 - `npm run dev`: Start development server.
