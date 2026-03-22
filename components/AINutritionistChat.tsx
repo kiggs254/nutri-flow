@@ -388,8 +388,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     <div
       className={cn(
         'flex w-full max-w-4xl flex-col mx-auto animate-in fade-in duration-500',
-        /* Space for always-fixed composer + safe area */
-        'pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))]'
+        'pb-3 sm:pb-4'
       )}
     >
       {/* Header */}
@@ -548,7 +547,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       )}
 
       {/* Messages */}
-      <Card className="mb-0 flex min-h-0 flex-1 flex-col overflow-hidden shadow-md">
+      <Card className="mb-3 flex min-h-0 flex-1 flex-col overflow-hidden shadow-md sm:mb-4">
         <CardContent className="flex min-h-0 flex-1 flex-col p-0">
           <div
             className={cn(
@@ -630,53 +629,48 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
         </CardContent>
       </Card>
 
-      {/* Composer — fixed on mobile with safe area */}
-      <div
-        className={cn(
-          'fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200/90 bg-white/95 backdrop-blur-md'
-        )}
-      >
-        <div
-          className={cn(
-            'mx-auto flex max-w-4xl items-stretch gap-2 px-3 pt-2',
-            'pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]'
-          )}
-        >
-          <label className="sr-only" htmlFor="ai-nutritionist-input">
-            Message to AI Nutritionist
-          </label>
-          <textarea
-            id="ai-nutritionist-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            rows={2}
-            placeholder="Ask about protocols, macros, client education…"
-            className={cn(
-              'min-h-[52px] max-h-36 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm',
-              'shadow-inner shadow-slate-900/5 placeholder:text-slate-400',
-              'focus:border-[#8C3A36] focus:outline-none focus:ring-2 focus:ring-[#8FAA41]/25'
-            )}
-            disabled={sending}
-          />
-          <Button
-            type="button"
-            variant="primary"
-            size="icon"
-            onClick={() => handleSend()}
-            disabled={sending || !input.trim()}
-            className="h-[52px] w-[52px] shrink-0 shadow-md"
-            title="Send"
-            aria-label="Send message"
-          >
-            {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </Button>
-        </div>
+      {/* Composer — sticky dock, always visible while scrolling */}
+      <div className="sticky bottom-2 z-30 sm:bottom-3">
+        <Card className="border-slate-200/90 bg-white/95 shadow-lg shadow-slate-900/10 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+          <CardContent className="p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] sm:p-3">
+            <div className="flex items-end gap-2">
+              <label className="sr-only" htmlFor="ai-nutritionist-input">
+                Message to AI Nutritionist
+              </label>
+              <textarea
+                id="ai-nutritionist-input"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={2}
+                placeholder="Ask about protocols, macros, client education..."
+                className={cn(
+                  'min-h-[50px] max-h-36 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-[15px] sm:text-sm',
+                  'shadow-inner shadow-slate-900/5 placeholder:text-slate-400',
+                  'focus:border-[#8C3A36] focus:outline-none focus:ring-2 focus:ring-[#8FAA41]/25'
+                )}
+                disabled={sending}
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="icon"
+                onClick={() => handleSend()}
+                disabled={sending || !input.trim()}
+                className="h-[50px] w-[50px] shrink-0 shadow-md"
+                title="Send"
+                aria-label="Send message"
+              >
+                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
