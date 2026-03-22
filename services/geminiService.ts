@@ -1,4 +1,4 @@
-import { MealGenParams, DailyPlan, MealPlanGenerationResult, KnowledgeBaseStats, KnowledgeBaseSearchMatch } from '../types';
+import { MealGenParams, DailyPlan, MealPlanGenerationResult, KnowledgeBaseSearchMatch } from '../types';
 import { supabase } from './supabase';
 
 // --- Provider Configuration ---
@@ -218,28 +218,6 @@ export const generateClientInsights = async (clientName: string, weightHistory: 
   }
 };
 
-// --- Nutrition knowledge base (RAG) ---
-
-export const fetchKnowledgeBaseStats = async (): Promise<KnowledgeBaseStats> => {
-  const data = await callBackend('/api/ai/knowledge-base/stats', undefined, 'GET');
-  return data as KnowledgeBaseStats;
-};
-
-export const fetchKnowledgeDocuments = async (): Promise<{ documents: Array<{
-  id: string;
-  title: string;
-  doc_type: string;
-  file_name: string | null;
-  chunk_count: number;
-  created_at: string;
-}> }> => {
-  return callBackend('/api/ai/knowledge-base/documents', undefined, 'GET');
-};
-
-export const deleteKnowledgeDocument = async (id: string): Promise<void> => {
-  await callBackend(`/api/ai/knowledge-base/documents/${id}`, undefined, 'DELETE');
-};
-
 /** Super admin only */
 export const adminSyncUsda = async (opts?: {
   maxPages?: number;
@@ -258,8 +236,38 @@ export const fetchAdminKnowledgeSummary = async (): Promise<{
   foodEmbeddingsCount: number;
   platformDocumentsCount: number;
   platformEmbeddingsCount: number;
+  userDocumentsCount: number;
+  userDocumentEmbeddingsCount: number;
 }> => {
   return callBackend('/api/admin/knowledge/summary', undefined, 'GET');
+};
+
+/** Legacy per-user nutrition_documents (all users) — list for admin hub */
+export const fetchAdminKnowledgeDocuments = async (): Promise<{
+  documents: Array<{
+    id: string;
+    user_id: string;
+    title: string;
+    doc_type: string;
+    file_name: string | null;
+    chunk_count: number;
+    created_at: string;
+    owner_email: string | null;
+  }>;
+}> => {
+  return callBackend('/api/admin/knowledge/documents', undefined, 'GET');
+};
+
+export const adminDeleteKnowledgeDocument = async (id: string): Promise<void> => {
+  await callBackend(`/api/admin/knowledge/documents/${id}`, undefined, 'DELETE');
+};
+
+/** Admin RAG test: food + platform + all user document chunks */
+export const adminSearchKnowledge = async (
+  query: string,
+  matchCount?: number
+): Promise<{ matches: KnowledgeBaseSearchMatch[] }> => {
+  return callBackend('/api/admin/knowledge/search', { query, matchCount });
 };
 
 export const fetchAdminPlatformDocuments = async () => {
@@ -301,27 +309,3 @@ export const sendNutritionistChat = async (
   return callBackend('/api/ai/nutritionist-chat', { provider, messages, clientId: clientId || undefined });
 };
 
-export const searchKnowledgeBase = async (
-  query: string,
-  matchCount?: number
-): Promise<{ matches: KnowledgeBaseSearchMatch[] }> => {
-  return callBackend('/api/ai/knowledge-base/search', { query, matchCount });
-};
-
-export const uploadKnowledgeBaseDocument = async (params: {
-  title?: string;
-  docType?: string;
-  fileName: string;
-  mimeType: string;
-  base64Content: string;
-}): Promise<{ documentId: string; chunksIndexed: number }> => {
-  return callBackend('/api/ai/knowledge-base/upload', params);
-};
-
-export const uploadKnowledgeBaseText = async (params: {
-  title?: string;
-  docType?: string;
-  textContent: string;
-}): Promise<{ documentId: string; chunksIndexed: number }> => {
-  return callBackend('/api/ai/knowledge-base/upload', params);
-};

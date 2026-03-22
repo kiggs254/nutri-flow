@@ -1,5 +1,9 @@
 -- Nutrition knowledge base + pgvector for RAG meal planning
+-- Embeddings: OpenAI text-embedding-3-small = 1536 dimensions (matches backend/services/embeddingService.js)
 -- Run on Supabase SQL editor or via migration pipeline.
+--
+-- If you already applied an older version of this file with vector(768), do NOT re-run this whole file.
+-- Instead run migrations/change_embeddings_to_openai_1536.sql to migrate existing data.
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -43,11 +47,11 @@ CREATE TABLE IF NOT EXISTS public.nutrition_documents (
 
 CREATE INDEX IF NOT EXISTS idx_nutrition_documents_user_id ON public.nutrition_documents (user_id);
 
--- Embeddings (Gemini text-embedding-004 = 768 dims)
+-- Embeddings (OpenAI text-embedding-3-small = 1536 dims)
 CREATE TABLE IF NOT EXISTS public.nutrition_embeddings (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   content text NOT NULL,
-  embedding vector(768) NOT NULL,
+  embedding vector(1536) NOT NULL,
   source_type text NOT NULL CHECK (source_type IN ('food', 'document')),
   source_id uuid NOT NULL,
   chunk_index integer NOT NULL DEFAULT 0,
@@ -58,6 +62,8 @@ CREATE TABLE IF NOT EXISTS public.nutrition_embeddings (
 CREATE INDEX IF NOT EXISTS idx_nutrition_embeddings_source ON public.nutrition_embeddings (source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_nutrition_embeddings_hnsw ON public.nutrition_embeddings
   USING hnsw (embedding vector_cosine_ops);
+
+COMMENT ON COLUMN public.nutrition_embeddings.embedding IS 'OpenAI text-embedding-3-small = 1536 dims';
 
 -- RLS
 ALTER TABLE public.nutrition_foods ENABLE ROW LEVEL SECURITY;
@@ -109,8 +115,9 @@ CREATE POLICY "nutrition_embeddings_delete_own_docs"
   );
 
 -- Cosine similarity search: global food chunks + caller's document chunks (JWT)
+DROP FUNCTION IF EXISTS public.match_nutrition_embeddings(vector(768), integer);
 CREATE OR REPLACE FUNCTION public.match_nutrition_embeddings(
-  query_embedding vector(768),
+  query_embedding vector(1536),
   match_count integer DEFAULT 24
 )
 RETURNS TABLE (
@@ -147,13 +154,13 @@ AS $$
   LIMIT LEAST(GREATEST(match_count, 1), 100);
 $$;
 
-REVOKE ALL ON FUNCTION public.match_nutrition_embeddings(vector, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) TO service_role;
 
 COMMENT ON TABLE public.nutrition_foods IS 'USDA/custom foods with per-100g nutrition for RAG meal planning';
 COMMENT ON TABLE public.nutrition_documents IS 'Nutritionist-uploaded knowledge documents';
-COMMENT ON TABLE public.nutrition_embeddings IS 'Chunk embeddings; use match_nutrition_embeddings for retrieval';
+COMMENT ON TABLE public.nutrition_embeddings IS 'Chunk embeddings (OpenAI 1536-dim); use match_nutrition_embeddings for retrieval';
 
 -- If table existed before chunk_count was added:
 ALTER TABLE public.nutrition_documents

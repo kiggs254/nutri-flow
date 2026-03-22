@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, Brain, Activity, MessageCircle, CreditCard, 
-  Settings, LogOut, Menu, X, Bell, Library, Sparkles
+  Settings, LogOut, Menu, X, Bell, Sparkles
 } from 'lucide-react';
 import ClientList from './ClientList';
 // FIX: Changed to a named import for MealPlanner as it does not have a default export.
@@ -10,11 +10,9 @@ import ProgressTracker from './ProgressTracker';
 import ClientProfile from './ClientProfile';
 import Billing from './Billing';
 import AccountSettings from './AccountSettings'; // New: Import AccountSettings
-import KnowledgeBase from './KnowledgeBase';
 import { AINutritionistChat } from './AINutritionistChat';
 import { Client, Notification } from '../types';
 import { supabase } from '../services/supabase';
-import { fetchAdminMe } from '../services/geminiService';
 
 interface ToastNotificationProps {
   notification: Notification;
@@ -73,29 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   });
 
   const [initialProfileTab, setInitialProfileTab] = useState<'overview' | 'messages' | 'meal_plans' | 'food' | 'schedule' | 'billing' | 'records'>('overview');
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { isSuperAdmin: adm } = await fetchAdminMe();
-        if (!cancelled) setIsSuperAdmin(!!adm);
-      } catch {
-        if (!cancelled) setIsSuperAdmin(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isSuperAdmin && activeTab === 'knowledge') {
-      setActiveTab('overview');
-    }
-  }, [isSuperAdmin, activeTab]);
 
   const playNotificationSound = () => {
     if (!audioContextRef.current) {
@@ -192,23 +168,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     };
   }, [clients]);
 
-  const navItems = useMemo(() => {
-    const items: Array<{ id: string; label: string; icon: typeof LayoutDashboard }> = [
-      { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'clients', label: 'Clients', icon: Users },
-      { id: 'planner', label: 'Meal Planner', icon: Brain },
-      { id: 'ai_nutritionist', label: 'AI Nutritionist', icon: Sparkles }
-    ];
-    if (isSuperAdmin) {
-      items.push({ id: 'knowledge', label: 'Knowledge Base', icon: Library });
-    }
-    items.push(
-      { id: 'progress', label: 'Progress', icon: Activity },
-      { id: 'messages', label: 'Messages', icon: MessageCircle },
-      { id: 'billing', label: 'Billing', icon: CreditCard }
-    );
-    return items;
-  }, [isSuperAdmin]);
+  const navItems = useMemo(
+    () =>
+      [
+        { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'clients', label: 'Clients', icon: Users },
+        { id: 'planner', label: 'Meal Planner', icon: Brain },
+        { id: 'ai_nutritionist', label: 'AI Nutritionist', icon: Sparkles },
+        { id: 'progress', label: 'Progress', icon: Activity },
+        { id: 'messages', label: 'Messages', icon: MessageCircle },
+        { id: 'billing', label: 'Billing', icon: CreditCard }
+      ] as Array<{ id: string; label: string; icon: typeof LayoutDashboard }>,
+    []
+  );
 
   const handleClientSelect = (client: Client) => {
     setSelectedClient(client);
@@ -260,15 +232,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         return <MealPlanner selectedClient={selectedClient} />;
       case 'ai_nutritionist':
         return <AINutritionistChat selectedClient={selectedClient} />;
-      case 'knowledge':
-        if (!isSuperAdmin) {
-          return (
-            <div className="p-6 text-slate-600 rounded-xl border border-slate-200 bg-white">
-              Knowledge base management is only available to platform administrators.
-            </div>
-          );
-        }
-        return <KnowledgeBase />;
       case 'progress':
         return <ProgressTracker selectedClient={selectedClient} />;
       case 'settings':

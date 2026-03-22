@@ -129,13 +129,8 @@ All endpoints require authentication via `Authorization: Bearer <supabase_jwt_to
 - Same extended response shape as generate.
 
 #### Nutrition knowledge base (RAG)
-- Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql`, then `migrations/add_platform_ingest_status.sql` (async platform doc indexing status).
-- Per-user document management (**super admins only** — same check as `/api/admin/me`; documents are stored under the admin’s auth user):
-  - `POST /api/ai/knowledge-base/upload` — body: `{ title?, docType?, fileName, mimeType, base64Content }` or `{ title?, docType?, textContent }`
-  - `GET /api/ai/knowledge-base/documents`
-  - `DELETE /api/ai/knowledge-base/documents/:id`
-  - `GET /api/ai/knowledge-base/stats`
-  - `POST /api/ai/knowledge-base/search` — body: `{ query, matchCount? }`
+- Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql`, then `migrations/add_platform_ingest_status.sql` (async platform doc indexing status), then **`migrations/add_match_nutrition_embeddings_admin.sql`** (admin-wide similarity search via service role only).
+- **All knowledge management** (stats, platform upload, USDA, listing legacy per-user documents, deletes, and admin RAG test search) is on **`/api/admin/knowledge/*`** — use the super-admin UI at **`/#/admin`**. New training content should be uploaded as **platform** documents (global RAG). Per-user `nutrition_documents` are **legacy**: super admins can list and delete them from the hub only; there is no separate dashboard tab or `/api/ai/knowledge-base/*` API.
 
 USDA sync is **super-admin only**: `POST /api/admin/knowledge/sync-usda` (requires JWT + row in `super_admins` and `SUPABASE_SERVICE_ROLE_KEY`).
 
@@ -152,15 +147,18 @@ Super admins use the **same login** as nutritionists, then open the app with the
 
 Access is denied unless the user’s UUID is in `public.super_admins`. This URL is intentionally not linked from the main dashboard.
 
-#### Super admin API — platform knowledge base only (`/api/admin/*`)
+#### Super admin API — unified knowledge hub (`/api/admin/*`)
 
 All routes require `Authorization: Bearer <access_token>` and a matching `user_id` in `public.super_admins`. **Bootstrap** (once): in Supabase SQL editor, `INSERT INTO public.super_admins (user_id) VALUES ('<auth.users id>');`
 
 - `GET /api/admin/me` — `{ isSuperAdmin: true | false }`
-- `GET /api/admin/knowledge/summary` — foods / embeddings / platform doc counts
+- `GET /api/admin/knowledge/summary` — foods / food embeddings / platform docs & embeddings / **all** user `nutrition_documents` count / document-embedding row count (`source_type = document`)
 - `GET /api/admin/knowledge/platform` — list platform documents (includes `ingest_status`, `ingest_error`)
-- `POST /api/admin/knowledge/platform/upload` — same JSON body as nutritionist KB upload (`textContent` or `base64Content` + `mimeType`). Returns **`202 Accepted`** with `{ documentId, ingestStatus: 'pending' }`; chunking and embedding run **in the background**. Poll `GET /api/admin/knowledge/platform` until `ingest_status` is `ready` or `failed`.
+- `POST /api/admin/knowledge/platform/upload` — body: `{ title?, docType?, textContent }` or `{ title?, docType?, fileName, mimeType, base64Content }`. Returns **`202 Accepted`** with `{ documentId, ingestStatus: 'pending' }`; chunking and embedding run **in the background**. Poll `GET /api/admin/knowledge/platform` until `ingest_status` is `ready` or `failed`.
 - `DELETE /api/admin/knowledge/platform/:id`
+- `GET /api/admin/knowledge/documents` — all rows in `nutrition_documents` (legacy per-user), with optional `owner_email` when resolvable via Auth admin API
+- `DELETE /api/admin/knowledge/documents/:id` — delete embeddings with `source_type=document` + `source_id`, then the document row
+- `POST /api/admin/knowledge/search` — body: `{ query, matchCount? }`; embeds query server-side and calls RPC `match_nutrition_embeddings_admin` (**service_role** — matches food, platform, and **all** user document chunks)
 - `POST /api/admin/knowledge/sync-usda` — body: `{ maxPages?, pageSize?, startPage? }`
 
 `SUPABASE_SERVICE_ROLE_KEY` is **required** for admin routes (and USDA / platform ingest).

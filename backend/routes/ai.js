@@ -1,18 +1,14 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { userIsSuperAdmin } from '../middleware/superAdmin.js';
 import { callGemini, callGeminiChat } from '../services/gemini.js';
 import { callOpenAI, callOpenAIChat, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
 import { callDeepSeek, callDeepSeekChat } from '../services/deepseek.js';
-import { extractKnowledgeBaseText } from '../services/knowledgeBaseExtract.js';
 import { isWordDocument, isDocxFile, extractTextFromWordDoc } from '../services/wordExtractor.js';
 import { extractTextFromPDF } from '../services/pdfExtractor.js';
 import { computeDailyCalorieTarget } from '../services/tdeeCalculator.js';
 import { retrieveNutritionContext, retrieveNutritionContextForChat } from '../services/ragRetrieval.js';
 import { validatePlanNutrition } from '../services/mealPlanValidation.js';
-import { ingestDocument, deleteDocumentAndEmbeddings } from '../services/documentIngestion.js';
 import { createUserSupabase, createServiceSupabase } from '../services/supabaseClients.js';
-import { embedText } from '../services/embeddingService.js';
 
 const router = express.Router();
 
@@ -61,154 +57,6 @@ router.get('/providers', authenticate, (req, res) => {
   }
 
   res.json({ providers: availableProviders });
-});
-
-// --- Nutrition knowledge base (RAG) — per-user doc management: super admins only ---
-
-async function assertSuperAdminKb(req, res) {
-  if (!(await userIsSuperAdmin(req.user?.id))) {
-    res.status(403).json({
-      error: 'Knowledge base management is restricted to platform administrators.'
-    });
-    return false;
-  }
-  return true;
-}
-
-router.post('/knowledge-base/upload', authenticate, async (req, res) => {
-  if (!(await assertSuperAdminKb(req, res))) return;
-  try {
-    const { title, docType, fileName, mimeType, base64Content, textContent } = req.body || {};
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
-    let contentText = typeof textContent === 'string' ? textContent : '';
-    if (!contentText.trim()) {
-      if (!base64Content || !mimeType) {
-        return res.status(400).json({ error: 'Provide textContent or base64Content + mimeType' });
-      }
-      contentText = await extractKnowledgeBaseText({
-        mimeType,
-        fileName: fileName || 'upload',
-        base64Content
-      });
-    }
-
-    const token = getAccessToken(req);
-    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
-
-    const userSb = createUserSupabase(token);
-    const result = await ingestDocument(userSb, {
-      userId,
-      title: title || fileName || 'Untitled document',
-      contentText,
-      docType: docType || 'guide',
-      fileName: fileName || null,
-      mimeType: mimeType || null
-    });
-
-    res.json(result);
-  } catch (error) {
-    console.error('KB upload error:', error);
-    res.status(500).json({ error: error.message || 'Upload failed' });
-  }
-});
-
-router.get('/knowledge-base/documents', authenticate, async (req, res) => {
-  if (!(await assertSuperAdminKb(req, res))) return;
-  try {
-    const token = getAccessToken(req);
-    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
-    const userSb = createUserSupabase(token);
-    const { data, error } = await userSb
-      .from('nutrition_documents')
-      .select('id, title, doc_type, file_name, chunk_count, created_at')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json({ documents: data || [] });
-  } catch (error) {
-    console.error('KB list error:', error);
-    res.status(500).json({ error: error.message || 'Failed to list documents' });
-  }
-});
-
-router.delete('/knowledge-base/documents/:id', authenticate, async (req, res) => {
-  if (!(await assertSuperAdminKb(req, res))) return;
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const token = getAccessToken(req);
-    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
-    const userSb = createUserSupabase(token);
-    await deleteDocumentAndEmbeddings(userSb, req.params.id, userId);
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('KB delete error:', error);
-    res.status(500).json({ error: error.message || 'Delete failed' });
-  }
-});
-
-router.get('/knowledge-base/stats', authenticate, async (req, res) => {
-  if (!(await assertSuperAdminKb(req, res))) return;
-  try {
-    const token = getAccessToken(req);
-    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
-    const userSb = createUserSupabase(token);
-
-    const { count: myDocCount } = await userSb
-      .from('nutrition_documents')
-      .select('*', { count: 'exact', head: true });
-
-    const { data: docRows } = await userSb.from('nutrition_documents').select('chunk_count');
-    const myChunkCount = (docRows || []).reduce((s, r) => s + (Number(r.chunk_count) || 0), 0);
-
-    const svc = createServiceSupabase();
-    let foodsCount = 0;
-    let foodEmbeddingsCount = 0;
-    if (svc) {
-      const { count: fc } = await svc.from('nutrition_foods').select('*', { count: 'exact', head: true });
-      const { count: ec } = await svc
-        .from('nutrition_embeddings')
-        .select('*', { count: 'exact', head: true })
-        .eq('source_type', 'food');
-      foodsCount = fc || 0;
-      foodEmbeddingsCount = ec || 0;
-    }
-
-    res.json({
-      foodsCount,
-      foodEmbeddingsCount,
-      myDocumentsCount: myDocCount || 0,
-      myDocumentChunksCount: myChunkCount,
-      serviceRoleConfigured: !!svc
-    });
-  } catch (error) {
-    console.error('KB stats error:', error);
-    res.status(500).json({ error: error.message || 'Stats failed' });
-  }
-});
-
-router.post('/knowledge-base/search', authenticate, async (req, res) => {
-  if (!(await assertSuperAdminKb(req, res))) return;
-  try {
-    const { query, matchCount } = req.body || {};
-    if (!query || String(query).trim() === '') {
-      return res.status(400).json({ error: 'query is required' });
-    }
-    const token = getAccessToken(req);
-    if (!token) return res.status(401).json({ error: 'Missing bearer token' });
-    const embedding = await embedText(String(query).slice(0, 8000));
-    const userSb = createUserSupabase(token);
-    const { data, error } = await userSb.rpc('match_nutrition_embeddings', {
-      query_embedding: embedding,
-      match_count: Math.min(Math.max(Number(matchCount) || 12, 1), 40)
-    });
-    if (error) throw error;
-    res.json({ matches: data || [] });
-  } catch (error) {
-    console.error('KB search error:', error);
-    res.status(500).json({ error: error.message || 'Search failed' });
-  }
 });
 
 // Helper to convert messages format to Gemini parts format

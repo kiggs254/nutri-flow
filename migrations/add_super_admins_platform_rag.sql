@@ -37,9 +37,10 @@ ALTER TABLE public.nutrition_embeddings
   ADD CONSTRAINT nutrition_embeddings_source_type_check
   CHECK (source_type IN ('food', 'document', 'platform'));
 
--- 4) Updated similarity search: food + user docs + platform docs
+-- 4) Updated similarity search: food + user docs + platform docs (query dim = OpenAI 1536)
+DROP FUNCTION IF EXISTS public.match_nutrition_embeddings(vector(768), integer);
 CREATE OR REPLACE FUNCTION public.match_nutrition_embeddings(
-  query_embedding vector(768),
+  query_embedding vector(1536),
   match_count integer DEFAULT 24
 )
 RETURNS TABLE (
@@ -77,8 +78,8 @@ AS $$
   LIMIT LEAST(GREATEST(match_count, 1), 100);
 $$;
 
-REVOKE ALL ON FUNCTION public.match_nutrition_embeddings(vector, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.match_nutrition_embeddings(vector(1536), integer) TO service_role;
 
 COMMENT ON TABLE public.platform_nutrition_documents IS 'Global training docs for RAG; ingested with service role';
