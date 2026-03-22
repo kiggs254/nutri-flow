@@ -141,9 +141,9 @@ const KnowledgeBase: React.FC = () => {
           Nutrition knowledge base
         </h1>
         <p className="text-slate-600 text-sm mt-1">
-          Upload your own guides for RAG (retrieval) in meal plans and AI chat. Platform-wide USDA food index and training
-          documents are maintained separately by your operator (bookmark the admin URL they provide — it is not linked from this
-          app). Run SQL migrations on Supabase if you have not already.
+          Super-admin only: upload guides that are indexed for RAG in meal plans and AI chat under your account. Platform-wide
+          USDA foods and global training documents are managed in the separate admin console. Run SQL migrations on Supabase if
+          you have not already.
         </p>
       </div>
 

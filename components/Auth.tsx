@@ -75,19 +75,21 @@ const Auth: React.FC<AuthProps> = ({ isOpen, onClose }) => {
         
         if (error) throw error;
         onClose();
-      } else { // signup
-        const { data, error } = await Promise.race([
-          supabase.auth.signUp({ email, password }),
-          timeoutPromise
-        ]) as any;
-
-        if (error) throw error;
-        if (data.user && !data.session) {
-           setSuccessMsg('Account created! Please check your email to confirm your registration.');
-           setView('login');
-        } else {
-          onClose();
+      } else { // signup — routed through backend for Nodemailer confirmation email
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create account. Please try again.');
         }
+        setSuccessMsg(
+          data.message || 'Account created! Please check your email to verify your account.'
+        );
+        setView('login');
       }
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");

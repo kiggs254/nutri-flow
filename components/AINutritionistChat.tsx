@@ -96,8 +96,8 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
           AI Nutritionist
         </h1>
         <p className="text-slate-600 text-sm mt-1">
-          Professional nutrition coaching assistant. Answers use your knowledge base (foods, your docs, and platform training
-          material) when relevant. Not medical advice.
+          Professional nutrition coaching assistant. Answers use indexed nutrition data (USDA foods and platform training
+          content) when relevant. Not medical advice.
         </p>
         <p className="text-xs text-slate-500 mt-2">
           Replies use your{' '}

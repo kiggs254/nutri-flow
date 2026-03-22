@@ -1,6 +1,18 @@
 import { createServiceSupabase } from '../services/supabaseClients.js';
 
 /**
+ * @param {string | undefined} userId
+ * @returns {Promise<boolean>}
+ */
+export async function userIsSuperAdmin(userId) {
+  const svc = createServiceSupabase();
+  if (!svc || !userId) return false;
+  const { data, error } = await svc.from('super_admins').select('user_id').eq('user_id', userId).maybeSingle();
+  if (error || !data) return false;
+  return true;
+}
+
+/**
  * Must run after authenticate. Sets req.isSuperAdmin when service role available.
  */
 export async function requireSuperAdmin(req, res, next) {

@@ -15,8 +15,8 @@ const AccountSettings: React.FC = () => {
     const [passwordSuccess, setPasswordSuccess] = useState('');
 
     // AI Provider State
-    const [selectedProvider, setSelectedProvider] = useState<AIProvider>('gemini');
-    const [availableProviders, setAvailableProviders] = useState<AIProvider[]>(['gemini']);
+    const [selectedProvider, setSelectedProvider] = useState<AIProvider>('openai');
+    const [availableProviders, setAvailableProviders] = useState<AIProvider[]>(['openai']);
     const [loadingProviders, setLoadingProviders] = useState(true);
 
     useEffect(() => {
@@ -40,7 +40,7 @@ const AccountSettings: React.FC = () => {
                     
                     if (response.ok) {
                         const data = await response.json();
-                        const providers = data.providers || ['gemini'];
+                        const providers = data.providers || ['openai'];
                         setAvailableProviders(providers);
                         
                         // If current provider is not available, switch to first available
@@ -136,7 +136,7 @@ const AccountSettings: React.FC = () => {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'gemini' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>Google Gemini</h3>
-                                    <p className="text-xs sm:text-sm text-slate-500">Fast, efficient, and multimodal capabilities. The default provider.</p>
+                                    <p className="text-xs sm:text-sm text-slate-500">Fast, efficient, and multimodal capabilities.</p>
                                 </div>
                                 {selectedProvider === 'gemini' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
                             </div>
@@ -152,7 +152,7 @@ const AccountSettings: React.FC = () => {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className={`font-bold text-sm sm:text-base ${selectedProvider === 'openai' ? 'text-[#8C3A36]' : 'text-slate-700'}`}>OpenAI (GPT-4)</h3>
-                                    <p className="text-xs sm:text-sm text-slate-500">High reasoning capabilities. Good for complex meal plans.</p>
+                                    <p className="text-xs sm:text-sm text-slate-500">High reasoning capabilities. Default provider for meal plans and chat.</p>
                                 </div>
                                  {selectedProvider === 'openai' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#8C3A36] ml-auto flex-shrink-0" />}
                             </div>

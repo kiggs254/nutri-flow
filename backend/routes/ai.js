@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { userIsSuperAdmin } from '../middleware/superAdmin.js';
 import { callGemini, callGeminiChat } from '../services/gemini.js';
 import { callOpenAI, callOpenAIChat, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
 import { callDeepSeek, callDeepSeekChat } from '../services/deepseek.js';
@@ -14,6 +15,10 @@ import { createUserSupabase, createServiceSupabase } from '../services/supabaseC
 import { embedText } from '../services/embeddingService.js';
 
 const router = express.Router();
+
+if (!process.env.OPENAI_API_KEY) {
+  console.warn('[WARN] OPENAI_API_KEY not set — RAG embedding will be skipped and OpenAI chat features will be unavailable');
+}
 
 function getAccessToken(req) {
   const a = req.headers.authorization;
@@ -44,23 +49,34 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
 // Get available AI providers (based on configured API keys)
 router.get('/providers', authenticate, (req, res) => {
   const availableProviders = [];
-  
-  if (process.env.GEMINI_API_KEY) {
-    availableProviders.push('gemini');
-  }
+
   if (process.env.OPENAI_API_KEY) {
     availableProviders.push('openai');
+  }
+  if (process.env.GEMINI_API_KEY) {
+    availableProviders.push('gemini');
   }
   if (process.env.DEEPSEEK_API_KEY) {
     availableProviders.push('deepseek');
   }
-  
+
   res.json({ providers: availableProviders });
 });
 
-// --- Nutrition knowledge base (RAG) ---
+// --- Nutrition knowledge base (RAG) — per-user doc management: super admins only ---
+
+async function assertSuperAdminKb(req, res) {
+  if (!(await userIsSuperAdmin(req.user?.id))) {
+    res.status(403).json({
+      error: 'Knowledge base management is restricted to platform administrators.'
+    });
+    return false;
+  }
+  return true;
+}
 
 router.post('/knowledge-base/upload', authenticate, async (req, res) => {
+  if (!(await assertSuperAdminKb(req, res))) return;
   try {
     const { title, docType, fileName, mimeType, base64Content, textContent } = req.body || {};
     const userId = req.user?.id;
@@ -99,6 +115,7 @@ router.post('/knowledge-base/upload', authenticate, async (req, res) => {
 });
 
 router.get('/knowledge-base/documents', authenticate, async (req, res) => {
+  if (!(await assertSuperAdminKb(req, res))) return;
   try {
     const token = getAccessToken(req);
     if (!token) return res.status(401).json({ error: 'Missing bearer token' });
@@ -116,6 +133,7 @@ router.get('/knowledge-base/documents', authenticate, async (req, res) => {
 });
 
 router.delete('/knowledge-base/documents/:id', authenticate, async (req, res) => {
+  if (!(await assertSuperAdminKb(req, res))) return;
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -131,6 +149,7 @@ router.delete('/knowledge-base/documents/:id', authenticate, async (req, res) =>
 });
 
 router.get('/knowledge-base/stats', authenticate, async (req, res) => {
+  if (!(await assertSuperAdminKb(req, res))) return;
   try {
     const token = getAccessToken(req);
     if (!token) return res.status(401).json({ error: 'Missing bearer token' });
@@ -170,6 +189,7 @@ router.get('/knowledge-base/stats', authenticate, async (req, res) => {
 });
 
 router.post('/knowledge-base/search', authenticate, async (req, res) => {
+  if (!(await assertSuperAdminKb(req, res))) return;
   try {
     const { query, matchCount } = req.body || {};
     if (!query || String(query).trim() === '') {

@@ -9,7 +9,7 @@ const PROVIDER_KEY = 'nutriflow_ai_provider';
 export const AI_PROVIDER_CHANGED_EVENT = 'nutriflow-ai-provider';
 
 export const getAIProvider = (): AIProvider => {
-  return (localStorage.getItem(PROVIDER_KEY) as AIProvider) || 'gemini';
+  return (localStorage.getItem(PROVIDER_KEY) as AIProvider) || 'openai';
 };
 
 export const setAIProvider = (provider: AIProvider) => {

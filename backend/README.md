@@ -130,11 +130,12 @@ All endpoints require authentication via `Authorization: Bearer <supabase_jwt_to
 
 #### Nutrition knowledge base (RAG)
 - Run SQL migrations on Supabase in order: `migrations/add_nutrition_knowledge_base.sql`, then `migrations/add_super_admins_platform_rag.sql`, then `migrations/add_platform_ingest_status.sql` (async platform doc indexing status).
-- `POST /api/ai/knowledge-base/upload` — body: `{ title?, docType?, fileName, mimeType, base64Content }` or `{ title?, docType?, textContent }`
-- `GET /api/ai/knowledge-base/documents`
-- `DELETE /api/ai/knowledge-base/documents/:id`
-- `GET /api/ai/knowledge-base/stats`
-- `POST /api/ai/knowledge-base/search` — body: `{ query, matchCount? }`
+- Per-user document management (**super admins only** — same check as `/api/admin/me`; documents are stored under the admin’s auth user):
+  - `POST /api/ai/knowledge-base/upload` — body: `{ title?, docType?, fileName, mimeType, base64Content }` or `{ title?, docType?, textContent }`
+  - `GET /api/ai/knowledge-base/documents`
+  - `DELETE /api/ai/knowledge-base/documents/:id`
+  - `GET /api/ai/knowledge-base/stats`
+  - `POST /api/ai/knowledge-base/search` — body: `{ query, matchCount? }`
 
 USDA sync is **super-admin only**: `POST /api/admin/knowledge/sync-usda` (requires JWT + row in `super_admins` and `SUPABASE_SERVICE_ROLE_KEY`).
 

@@ -1,49 +1,48 @@
 /**
- * Gemini text embeddings (768-dim) for nutrition RAG
- * Model: text-embedding-004
+ * OpenAI text embeddings (1536-dim) for nutrition RAG
+ * Model: text-embedding-3-small
  */
 
-const DEFAULT_MODEL = 'text-embedding-004';
+const DEFAULT_MODEL = 'text-embedding-3-small';
+const EMBEDDING_DIMS = 1536;
 
 /**
  * @param {string} text
  * @returns {Promise<number[]>}
  */
 export async function embedText(text) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error('OPENAI_API_KEY not configured');
   }
   const trimmed = String(text || '').trim();
   if (!trimmed) {
     throw new Error('embedText: empty text');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODEL}:embedContent?key=${apiKey}`;
-
-  const body = {
-    model: `models/${DEFAULT_MODEL}`,
-    content: {
-      parts: [{ text: trimmed.slice(0, 8000) }]
-    }
-  };
-
-  const response = await fetch(url, {
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      input: trimmed.slice(0, 8000)
+    })
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(`Gemini embedContent failed: ${err.error?.message || response.statusText}`);
+    throw new Error(`OpenAI embeddings failed: ${err.error?.message || response.statusText}`);
   }
 
   const data = await response.json();
-  const emb = data.embedding;
-  const values = Array.isArray(emb?.values) ? emb.values : Array.isArray(emb) ? emb : null;
-  if (!Array.isArray(values) || values.length !== 768) {
-    throw new Error(`Unexpected embedding size: ${values?.length}; check text-embedding-004 output`);
+  const values = data?.data?.[0]?.embedding;
+  if (!Array.isArray(values) || values.length !== EMBEDDING_DIMS) {
+    throw new Error(
+      `Unexpected embedding size: ${values?.length ?? 'none'}; expected ${EMBEDDING_DIMS} from ${DEFAULT_MODEL}`
+    );
   }
   return values;
 }

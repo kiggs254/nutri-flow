@@ -143,7 +143,13 @@ export async function retrieveNutritionContextForChat(accessToken, input, opts =
 
   const queryText = prefix ? `${prefix}\n\nQuestion: ${msg}`.slice(0, 6000) : msg.slice(0, 6000);
 
-  const embedding = await embedText(queryText);
+  let embedding;
+  try {
+    embedding = await embedText(queryText);
+  } catch (embedErr) {
+    console.error('[RAG chat] embedding failed, skipping RAG:', embedErr.message);
+    return { contextBlock: '', matches: [], error: embedErr.message };
+  }
   const supabase = createUserSupabase(accessToken);
 
   const { data, error } = await supabase.rpc('match_nutrition_embeddings', {
