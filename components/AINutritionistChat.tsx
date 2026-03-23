@@ -101,6 +101,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [streamingReply, setStreamingReply] = useState(false);
   const [activeProvider, setActiveProvider] = useState<AIProvider>(() => getAIProvider());
   const [sessions, setSessions] = useState<StoredChatSession[]>(initialSessionsRef.current);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -112,6 +113,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   const activeSessionIdRef = useRef<string | null>(null);
   const prevClientIdRef = useRef<string | null>(selectedClient?.id ?? null);
   const prevClientNameRef = useRef<string | null>(selectedClient?.name ?? null);
+  const mountedRef = useRef(true);
 
   const currentClientId = selectedClient?.id ?? null;
 
@@ -165,6 +167,13 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   );
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const sync = () => setActiveProvider(getAIProvider());
     sync();
     window.addEventListener('storage', sync);
@@ -198,16 +207,13 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
         clientId: prevClientId,
         clientName: prevClientName
       });
-      const candidate = sessionsRef.current.find((s) => s.clientId === nextClientId);
-      if (candidate) {
-        loadSession(candidate);
-      } else {
-        setMessages([]);
-        messagesRef.current = [];
-        setActiveSessionId(null);
-        activeSessionIdRef.current = null;
-        setInput('');
-      }
+      // Start a fresh draft when changing selected client.
+      // Saved sessions remain available in history strip and can be opened manually.
+      setMessages([]);
+      messagesRef.current = [];
+      setActiveSessionId(null);
+      activeSessionIdRef.current = null;
+      setInput('');
       setClientContext('');
       setIncludeClientContext(false);
     }
@@ -231,6 +237,34 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     [sessions, currentClientId]
   );
 
+  const streamAssistantMessage = async (baseThread: ChatMessage[], fullReply: string) => {
+    const reply = (fullReply || '(No response)').trim() || '(No response)';
+    const total = reply.length;
+    if (total < 80) {
+      const finalThread = [...baseThread, { role: 'assistant', content: reply }];
+      setMessages(finalThread);
+      persistCurrentSession(finalThread);
+      return;
+    }
+
+    const minChunk = 6;
+    const dynamicChunk = Math.ceil(total / 90);
+    const chunkSize = Math.max(minChunk, dynamicChunk);
+    let i = 0;
+
+    while (i < total) {
+      if (!mountedRef.current) return;
+      i = Math.min(i + chunkSize, total);
+      const partial = reply.slice(0, i);
+      setMessages([...baseThread, { role: 'assistant', content: partial }]);
+      await new Promise((r) => setTimeout(r, 18));
+    }
+
+    const finalThread = [...baseThread, { role: 'assistant', content: reply }];
+    setMessages(finalThread);
+    persistCurrentSession(finalThread);
+  };
+
   const handleSend = async (text?: string) => {
     const t = (text ?? input).trim();
     if (!t || sending) return;
@@ -247,9 +281,8 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       if (ragError) {
         showToast(`RAG: ${ragError}`, 'warning', 4000);
       }
-      const finalThread = [...nextThread, { role: 'assistant', content: reply || '(No response)' }];
-      setMessages(finalThread);
-      persistCurrentSession(finalThread);
+      setStreamingReply(true);
+      await streamAssistantMessage(nextThread, reply || '(No response)');
     } catch (e: any) {
       showToast(e.message || 'Chat failed', 'error');
       const rolledBack = nextThread.slice(0, -1);
@@ -257,6 +290,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       persistCurrentSession(rolledBack);
       setInput(t);
     } finally {
+      setStreamingReply(false);
       setSending(false);
     }
   };
@@ -601,7 +635,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
                   </div>
                 </div>
               ))}
-              {sending && (
+              {sending && !streamingReply && (
                 <div className="flex gap-2 sm:gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 sm:h-9 sm:w-9">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -666,7 +700,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
                 title="Send"
                 aria-label="Send message"
               >
-                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                {sending && !streamingReply ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               </Button>
             </div>
           </CardContent>
