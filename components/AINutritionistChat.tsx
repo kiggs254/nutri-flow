@@ -1,14 +1,20 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  MessageCircle,
   Send,
-  Loader2,
-  Sparkles,
-  Copy,
+  Paperclip,
+  Settings,
+  MessageSquare,
+  Plus,
   User,
   Bot,
-  RotateCcw
+  Copy,
+  RotateCcw,
+  Sparkles,
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import {
   sendNutritionistChat,
@@ -20,7 +26,6 @@ import {
 import { supabase } from '../services/supabase';
 import { Client } from '../types';
 import { useToast } from '../utils/toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Skeleton } from './ui/skeleton';
@@ -48,6 +53,60 @@ interface StoredChatSession {
 
 interface AINutritionistChatProps {
   selectedClient: Client | null;
+}
+
+interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ className, ...props }, ref) => {
+  return (
+    <textarea
+      ref={ref}
+      className={cn(
+        'flex min-h-[56px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner shadow-slate-900/5',
+        'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8FAA41]/35',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        className
+      )}
+      {...props}
+    />
+  );
+});
+Textarea.displayName = 'Textarea';
+
+function useAutoResizeTextarea({ minHeight, maxHeight }: { minHeight: number; maxHeight?: number }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = useCallback(
+    (reset?: boolean) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      if (reset) {
+        textarea.style.height = `${minHeight}px`;
+        return;
+      }
+
+      textarea.style.height = `${minHeight}px`;
+      const nextHeight = Math.max(
+        minHeight,
+        Math.min(textarea.scrollHeight, maxHeight ?? Number.POSITIVE_INFINITY)
+      );
+      textarea.style.height = `${nextHeight}px`;
+    },
+    [minHeight, maxHeight]
+  );
+
+  useEffect(() => {
+    if (textareaRef.current) textareaRef.current.style.height = `${minHeight}px`;
+  }, [minHeight]);
+
+  useEffect(() => {
+    const onResize = () => adjustHeight();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [adjustHeight]);
+
+  return { textareaRef, adjustHeight };
 }
 
 function chatProviderLabel(p: AIProvider): string {
@@ -84,7 +143,7 @@ function writeStoredSessions(sessions: StoredChatSession[]) {
   try {
     localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions));
   } catch {
-    // ignore storage quota errors
+    // ignore storage quota issues
   }
 }
 
@@ -96,24 +155,32 @@ function createChatTitle(messages: ChatMessage[], clientName?: string | null): s
 
 export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selectedClient }) => {
   const { showToast } = useToast();
+
   const initialSessionsRef = useRef<StoredChatSession[]>(loadStoredSessions());
   const sessionsRef = useRef<StoredChatSession[]>(initialSessionsRef.current);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
   const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [streamingReply, setStreamingReply] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [activeProvider, setActiveProvider] = useState<AIProvider>(() => getAIProvider());
+
   const [sessions, setSessions] = useState<StoredChatSession[]>(initialSessionsRef.current);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
   const [clientContext, setClientContext] = useState('');
-  const [includeClientContext, setIncludeClientContext] = useState(false);
+  const [includeContext, setIncludeContext] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
+
+  const mountedRef = useRef(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
   const prevClientIdRef = useRef<string | null>(selectedClient?.id ?? null);
   const prevClientNameRef = useRef<string | null>(selectedClient?.name ?? null);
-  const mountedRef = useRef(true);
+
+  const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
 
   const currentClientId = selectedClient?.id ?? null;
 
@@ -121,15 +188,6 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     sessionsRef.current = next;
     writeStoredSessions(next);
     if (commitState) setSessions(next);
-  }, []);
-
-  const loadSession = useCallback((session: StoredChatSession) => {
-    setMessages(session.messages || []);
-    messagesRef.current = session.messages || [];
-    setActiveSessionId(session.id);
-    activeSessionIdRef.current = session.id;
-    setClientContext('');
-    setIncludeClientContext(false);
   }, []);
 
   const persistCurrentSession = useCallback(
@@ -154,6 +212,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
         createdAt: existing?.createdAt || nowIso,
         updatedAt: nowIso
       };
+
       const merged = [nextSession, ...sessionsRef.current.filter((s) => s.id !== sessionId)]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         .slice(0, MAX_STORED_CHAT_SESSIONS);
@@ -165,6 +224,15 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     },
     [applySessions]
   );
+
+  const loadSession = useCallback((session: StoredChatSession) => {
+    setMessages(session.messages || []);
+    messagesRef.current = session.messages || [];
+    setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id;
+    setClientContext('');
+    setIncludeContext(false);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -203,24 +271,21 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     const prevClientName = prevClientNameRef.current;
 
     if (prevClientId !== nextClientId) {
-      persistCurrentSession(messagesRef.current, {
-        clientId: prevClientId,
-        clientName: prevClientName
-      });
-      // Start a fresh draft when changing selected client.
-      // Saved sessions remain available in history strip and can be opened manually.
+      persistCurrentSession(messagesRef.current, { clientId: prevClientId, clientName: prevClientName });
+
       setMessages([]);
       messagesRef.current = [];
       setActiveSessionId(null);
       activeSessionIdRef.current = null;
       setInput('');
+      adjustHeight(true);
       setClientContext('');
-      setIncludeClientContext(false);
+      setIncludeContext(false);
     }
 
     prevClientIdRef.current = nextClientId;
     prevClientNameRef.current = nextClientName;
-  }, [selectedClient?.id, selectedClient?.name, loadSession, persistCurrentSession]);
+  }, [selectedClient?.id, selectedClient?.name, adjustHeight, persistCurrentSession]);
 
   useEffect(() => {
     return () => {
@@ -240,6 +305,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   const streamAssistantMessage = async (baseThread: ChatMessage[], fullReply: string) => {
     const reply = (fullReply || '(No response)').trim() || '(No response)';
     const total = reply.length;
+
     if (total < 80) {
       const finalThread = [...baseThread, { role: 'assistant', content: reply }];
       setMessages(finalThread);
@@ -247,9 +313,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       return;
     }
 
-    const minChunk = 6;
-    const dynamicChunk = Math.ceil(total / 90);
-    const chunkSize = Math.max(minChunk, dynamicChunk);
+    const chunkSize = Math.max(6, Math.ceil(total / 90));
     let i = 0;
 
     while (i < total) {
@@ -268,19 +332,23 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   const handleSend = async (text?: string) => {
     const t = (text ?? input).trim();
     if (!t || sending) return;
-    setInput('');
+
     const userMsg: ChatMessage = { role: 'user', content: t };
     const nextThread = [...messagesRef.current, userMsg];
+
+    setInput('');
+    adjustHeight(true);
     setMessages(nextThread);
     persistCurrentSession(nextThread);
     setSending(true);
+
     try {
       const { reply, ragError } = await sendNutritionistChat(nextThread, selectedClient?.id ?? null, {
-        extraContext: includeClientContext && clientContext ? clientContext : undefined
+        extraContext: includeContext && clientContext ? clientContext : undefined
       });
-      if (ragError) {
-        showToast(`RAG: ${ragError}`, 'warning', 4000);
-      }
+
+      if (ragError) showToast(`RAG: ${ragError}`, 'warning', 4000);
+
       setStreamingReply(true);
       await streamAssistantMessage(nextThread, reply || '(No response)');
     } catch (e: any) {
@@ -289,9 +357,17 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       setMessages(rolledBack);
       persistCurrentSession(rolledBack);
       setInput(t);
+      requestAnimationFrame(() => adjustHeight());
     } finally {
       setStreamingReply(false);
       setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
     }
   };
 
@@ -305,13 +381,14 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   };
 
   const clearChat = () => {
-    if (messages.length === 0) return;
+    if (!messages.length) return;
     if (!window.confirm('Clear this conversation?')) return;
     persistCurrentSession();
     setMessages([]);
     setInput('');
     setActiveSessionId(null);
     activeSessionIdRef.current = null;
+    adjustHeight(true);
     showToast('Conversation cleared', 'success', 2000);
   };
 
@@ -322,8 +399,9 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
     setInput('');
     setActiveSessionId(null);
     activeSessionIdRef.current = null;
+    adjustHeight(true);
     setClientContext('');
-    setIncludeClientContext(false);
+    setIncludeContext(false);
   };
 
   const loadClientContext = async () => {
@@ -331,6 +409,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       showToast('Select a client first', 'warning');
       return;
     }
+
     setLoadingContext(true);
     try {
       const [progressRes, notesRes] = await Promise.all([
@@ -350,6 +429,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
 
       const progressRows = (progressRes.data || []) as Array<Record<string, unknown>>;
       const noteRows = (notesRes.data || []) as Array<Record<string, unknown>>;
+
       const profileLines = [
         `Client name: ${selectedClient.name || 'Unknown'}`,
         `Goal: ${selectedClient.goal || 'N/A'}`,
@@ -367,8 +447,8 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       ];
 
       const progressLines = progressRows.length
-        ? progressRows.map((r) =>
-            [
+        ? progressRows.map((r) => {
+            return [
               `- ${String(r.date || 'unknown date')}:`,
               `weight ${r.weight ?? 'N/A'} kg,`,
               `compliance ${r.compliance_score ?? 'N/A'}%,`,
@@ -382,16 +462,14 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
               r.notes ? `Notes: ${String(r.notes).slice(0, 200)}` : ''
             ]
               .filter(Boolean)
-              .join(' ')
-          )
+              .join(' ');
+          })
         : ['- No progress reports yet.'];
 
       const noteLines = noteRows.length
         ? noteRows.map((n) => {
             const marker = n.include_in_ai_prompt ? '[included]' : '[note]';
-            return `- ${String(n.created_at || '').slice(0, 10)} ${marker} ${String(
-              n.content || ''
-            ).slice(0, 220)}`;
+            return `- ${String(n.created_at || '').slice(0, 10)} ${marker} ${String(n.content || '').slice(0, 220)}`;
           })
         : ['- No client notes.'];
 
@@ -409,7 +487,7 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
       ].join('\n');
 
       setClientContext(context);
-      setIncludeClientContext(true);
+      setIncludeContext(true);
       showToast(`Loaded client context (${progressRows.length} progress reports)`, 'success', 2500);
     } catch (e: any) {
       showToast(e.message || 'Failed to load client context', 'error');
@@ -419,292 +497,258 @@ export const AINutritionistChat: React.FC<AINutritionistChatProps> = ({ selected
   };
 
   return (
-    <div
-      className={cn(
-        'flex w-full max-w-4xl flex-col mx-auto animate-in fade-in duration-500',
-        'pb-3 sm:pb-4'
-      )}
-    >
-      {/* Header */}
-      <Card className="mb-3 overflow-hidden sm:mb-4">
-        <CardHeader className="gap-3 bg-gradient-to-br from-[#F9F5F5] to-white sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#8C3A36]/10 text-[#8C3A36]">
-                <MessageCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <CardTitle className="text-base sm:text-xl">AI Nutritionist</CardTitle>
-                <CardDescription className="mt-0.5 text-xs sm:text-sm">
+    <div className="h-[calc(100vh-10rem)] min-h-[640px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex h-full text-slate-900">
+        <AnimatePresence initial={false}>
+          {showSidebar && (
+            <motion.aside
+              initial={{ x: -280, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -280, opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              className="flex w-[320px] flex-col border-r border-slate-200 bg-slate-50"
+            >
+              <div className="border-b border-slate-200 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">AI Nutritionist</h2>
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mb-2 text-sm text-slate-600">
                   Coaching assistant — uses indexed nutrition data when relevant. Not medical advice.
-                </CardDescription>
+                </p>
+                <div className="space-y-1 text-xs text-slate-500">
+                  <p>
+                    <strong>Model:</strong> {chatProviderLabel(activeProvider)}
+                  </p>
+                  <p className="text-[#8C3A36]">Change in Settings → AI provider</p>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <Badge variant="default">Model: {chatProviderLabel(activeProvider)}</Badge>
-              <span className="text-[11px] text-slate-500 sm:text-xs">Change in Settings → AI provider</span>
-            </div>
-            {selectedClient && (
-              <div className="flex items-start gap-2 rounded-xl border border-stone-200 bg-white/80 px-3 py-2.5 text-sm text-[#8C3A36]">
-                <User className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="min-w-0 leading-snug">
-                  <span className="font-semibold">{selectedClient.name}</span>
-                  <span className="text-slate-600"> — goal, allergies, and preferences shape retrieval.</span>
-                </span>
-              </div>
-            )}
-            {selectedClient && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
+
+              <div className="border-b border-slate-200 p-4 space-y-2">
+                <p className="text-sm text-slate-700">
+                  <strong>{selectedClient?.name || 'No client selected'}</strong>
+                  <span className="text-slate-500"> — goal, allergies, and preferences shape retrieval.</span>
+                </p>
                 <Button
-                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={loadClientContext}
-                  disabled={loadingContext || sending}
+                  disabled={!selectedClient || loadingContext || sending}
+                  className={cn('w-full justify-start', clientContext && 'border-[#8C3A36]/30 bg-[#8C3A36]/5')}
                 >
-                  {loadingContext ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loadingContext ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                   Load full client AI context
                 </Button>
-                <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                <label className="flex items-center gap-2 text-xs text-slate-700">
                   <input
                     type="checkbox"
-                    checked={includeClientContext}
-                    onChange={(e) => setIncludeClientContext(e.target.checked)}
-                    className="h-4 w-4 accent-[#8C3A36]"
+                    checked={includeContext}
+                    onChange={(e) => setIncludeContext(e.target.checked)}
                     disabled={!clientContext}
+                    className="h-4 w-4 rounded accent-[#8C3A36]"
                   />
                   Include loaded context
                 </label>
               </div>
-            )}
-          </div>
-          <div className="flex shrink-0 gap-2 self-start sm:flex-col sm:items-stretch">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={copyLast}
-              disabled={!messages.some((m) => m.role === 'assistant')}
-              className="min-h-[44px] flex-1 sm:flex-none"
-              aria-label="Copy last reply"
-            >
-              <Copy className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Copy</span>
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clearChat}
-              disabled={messages.length === 0}
-              className="min-h-[44px] flex-1 text-slate-600 sm:flex-none"
-              aria-label="Clear conversation"
-            >
-              <RotateCcw className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Clear</span>
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
 
-      {/* Saved chats */}
-      <Card className="mb-3 sm:mb-4">
-        <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-bold text-slate-800">Saved chats</div>
-              <div className="text-xs text-slate-500">
-                {selectedClient
-                  ? `Showing chats for ${selectedClient.name}`
-                  : 'Showing chats without a selected client'}
+              <div className="border-b border-slate-200 p-4">
+                <Button variant="primary" size="sm" onClick={startNewChat} className="w-full">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New chat
+                </Button>
               </div>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={startNewChat}>
-              New chat
-            </Button>
-          </div>
-          {scopedSessions.length === 0 ? (
-            <p className="text-xs text-slate-500">No saved chats yet for this client.</p>
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
-              {scopedSessions.slice(0, 12).map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => loadSession(s)}
-                  className={cn(
-                    'min-h-[44px] shrink-0 rounded-xl border px-3 py-2 text-left transition-colors',
-                    activeSessionId === s.id
-                      ? 'border-[#8C3A36] bg-[#F9F5F5] text-[#8C3A36]'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-[#8FAA41]/60'
-                  )}
-                >
-                  <div className="max-w-[280px] truncate text-sm font-medium">{s.title}</div>
-                  <div className="text-[11px] text-slate-500">
-                    {new Date(s.updatedAt).toLocaleString()}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Suggested prompts — horizontal scroll on narrow screens */}
-      {messages.length === 0 && (
-        <Card className="mb-3 sm:mb-4">
-          <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
-            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-[#8FAA41]">
-              <Sparkles className="h-4 w-4 shrink-0" />
-              Try asking
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:overflow-visible">
-              {SUGGESTED_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => handleSend(p)}
-                  disabled={sending}
-                  className={cn(
-                    'min-h-[44px] shrink-0 snap-start rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-700',
-                    'transition-colors hover:border-[#8FAA41]/60 hover:bg-white active:bg-slate-100',
-                    'disabled:opacity-50 sm:max-w-none sm:shrink',
-                    'max-w-[min(100vw-4rem,320px)] sm:max-w-md'
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Messages */}
-      <Card className="mb-3 flex min-h-0 flex-1 flex-col overflow-hidden shadow-md sm:mb-4">
-        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-          <div
-            className={cn(
-              'min-h-[min(42dvh,280px)] max-h-[min(58dvh,420px)] flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:min-h-[320px] sm:max-h-[min(62dvh,520px)] sm:px-5 sm:py-5'
-            )}
-          >
-            {messages.length === 0 && !sending && (
-              <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 px-4 text-center text-slate-500">
-                <Bot className="h-10 w-10 text-slate-300" />
-                <p className="max-w-sm text-sm">Start a message below or tap a suggestion above.</p>
-              </div>
-            )}
-            <div className="space-y-4">
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn('flex gap-2 sm:gap-3', m.role === 'user' ? 'flex-row-reverse' : 'flex-row')}
-                >
-                  <div
-                    className={cn(
-                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9',
-                      m.role === 'user' ? 'bg-[#8C3A36] text-white' : 'bg-slate-200 text-slate-600'
-                    )}
-                    aria-hidden
-                  >
-                    {m.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                  </div>
-                  <div
-                    className={cn(
-                      'min-w-0 max-w-[min(100%,calc(100vw-5.5rem))] rounded-2xl px-3.5 py-2.5 text-sm sm:max-w-[85%] sm:px-4 sm:py-3',
-                      m.role === 'user'
-                        ? 'bg-[#8C3A36] text-white shadow-sm rounded-br-md'
-                        : 'border border-slate-100 bg-slate-50/90 text-slate-800 shadow-sm rounded-bl-md'
-                    )}
-                  >
-                    {m.role === 'assistant' ? (
-                      <div
-                        className={cn(
-                          'prose prose-sm max-w-none break-words text-slate-800',
-                          'prose-p:my-2 prose-ul:my-2 prose-ol:my-2',
-                          'prose-headings:mt-3 prose-headings:mb-1 prose-headings:text-slate-900',
-                          'prose-a:text-[#8C3A36] prose-strong:text-slate-900',
-                          'prose-code:rounded prose-code:bg-slate-200/60 prose-code:px-1 prose-code:text-xs'
-                        )}
-                      >
-                        <ReactMarkdown>{m.content}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {sending && !streamingReply && (
-                <div className="flex gap-2 sm:gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 sm:h-9 sm:w-9">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                  <div className="min-w-0 max-w-[85%] space-y-2 rounded-2xl rounded-bl-md border border-slate-100 bg-slate-50 px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                      <span>Thinking</span>
-                      <span className="inline-flex gap-0.5">
-                        <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
-                        <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
-                        <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
-                      </span>
+              <div className="flex-1 overflow-y-auto p-4">
+                <h3 className="mb-1 text-sm font-semibold text-slate-700">Saved chats</h3>
+                <p className="mb-3 text-xs text-slate-500">
+                  {selectedClient ? `Showing chats for ${selectedClient.name}` : 'Showing chats without a selected client'}
+                </p>
+                <div className="space-y-2">
+                  {scopedSessions.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500">
+                      No saved chats yet.
                     </div>
-                    <div className="space-y-2">
+                  )}
+                  {scopedSessions.map((chat) => (
+                    <motion.button
+                      key={chat.id}
+                      whileHover={{ scale: 1.01 }}
+                      type="button"
+                      onClick={() => loadSession(chat)}
+                      className={cn(
+                        'w-full rounded-lg border p-3 text-left transition-colors',
+                        activeSessionId === chat.id
+                          ? 'border-[#8C3A36]/40 bg-[#F9F5F5]'
+                          : 'border-slate-200 bg-white hover:border-[#8FAA41]/40 hover:bg-slate-50'
+                      )}
+                    >
+                      <p className="line-clamp-2 text-sm font-medium text-slate-800">{chat.title}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">{new Date(chat.updatedAt).toLocaleString()}</p>
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 p-4">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={copyLast}>
+                    <Copy className="mr-1 h-3.5 w-3.5" />
+                    Copy
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1" onClick={clearChat}>
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+
+        <main className="flex min-w-0 flex-1 flex-col bg-white">
+          <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+            <Button variant="ghost" size="icon" onClick={() => setShowSidebar((v) => !v)} className="h-9 w-9 text-slate-600">
+              {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </Button>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-base font-semibold sm:text-lg">AI Nutritionist</h1>
+              <div className="mt-0.5 flex items-center gap-2">
+                <Badge variant="default">{chatProviderLabel(activeProvider)}</Badge>
+                {includeContext && clientContext ? (
+                  <Badge variant="outline" className="text-[10px]">Client context included</Badge>
+                ) : null}
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500">
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            {messages.length === 0 ? (
+              <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#8C3A36]/10 text-[#8C3A36]">
+                  <Bot className="h-8 w-8" />
+                </div>
+                <h2 className="text-2xl font-semibold">Welcome to AI Nutritionist</h2>
+                <p className="mt-2 text-slate-600">
+                  Ask anything about nutrition, meal planning, and client coaching.
+                </p>
+                <div className="mt-6 flex max-w-3xl flex-wrap justify-center gap-2">
+                  {SUGGESTED_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => void handleSend(p)}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 hover:border-[#8FAA41]/50 hover:bg-white"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto w-full max-w-3xl space-y-5">
+                {messages.map((message, idx) => (
+                  <motion.div
+                    key={`${message.role}-${idx}`}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
+                  >
+                    {message.role === 'assistant' && (
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8C3A36]/10 text-[#8C3A36]">
+                        <Bot className="h-4 w-4" />
+                      </div>
+                    )}
+
+                    <div
+                      className={cn(
+                        'max-w-[78%] rounded-2xl px-4 py-3 text-sm shadow-sm',
+                        message.role === 'user'
+                          ? 'rounded-br-md bg-[#8C3A36] text-white'
+                          : 'rounded-bl-md border border-slate-200 bg-slate-50 text-slate-800'
+                      )}
+                    >
+                      {message.role === 'assistant' ? (
+                        <div className="prose prose-sm max-w-none break-words prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-code:rounded prose-code:bg-slate-200/70 prose-code:px-1 prose-code:text-xs">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+                      )}
+                    </div>
+
+                    {message.role === 'user' && (
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700">
+                        <User className="h-4 w-4" />
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+
+                {sending && !streamingReply && (
+                  <div className="flex gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </div>
+                    <div className="max-w-[78%] space-y-2 rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>Thinking</span>
+                        <span className="inline-flex gap-0.5">
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+                        </span>
+                      </div>
                       <Skeleton className="h-2.5 w-[78%]" />
                       <Skeleton className="h-2.5 w-full" />
                       <Skeleton className="h-2.5 w-[65%]" />
                     </div>
                   </div>
+                )}
+
+                <div ref={bottomRef} />
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 bg-white p-4">
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    adjustHeight();
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask about nutrition, meal plans, or dietary guidance..."
+                  className="w-full min-h-[56px] resize-none border-none bg-transparent px-4 py-3 focus-visible:ring-0"
+                  style={{ overflow: 'hidden' }}
+                  disabled={sending}
+                />
+                <div className="flex items-center justify-between border-t border-slate-200 p-3">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500">
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => void handleSend()}
+                    disabled={sending || !input.trim()}
+                    size="icon"
+                    className="h-10 w-10 rounded-full"
+                    title="Send"
+                  >
+                    {sending && !streamingReply ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
                 </div>
-              )}
-              <div ref={bottomRef} />
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Composer — sticky dock, always visible while scrolling */}
-      <div className="sticky bottom-2 z-30 sm:bottom-3">
-        <Card className="border-slate-200/90 bg-white/95 shadow-lg shadow-slate-900/10 backdrop-blur supports-[backdrop-filter]:bg-white/85">
-          <CardContent className="p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] sm:p-3">
-            <div className="flex items-end gap-2">
-              <label className="sr-only" htmlFor="ai-nutritionist-input">
-                Message to AI Nutritionist
-              </label>
-              <textarea
-                id="ai-nutritionist-input"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                rows={2}
-                placeholder="Ask about protocols, macros, client education..."
-                className={cn(
-                  'min-h-[50px] max-h-36 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-[15px] sm:text-sm',
-                  'shadow-inner shadow-slate-900/5 placeholder:text-slate-400',
-                  'focus:border-[#8C3A36] focus:outline-none focus:ring-2 focus:ring-[#8FAA41]/25'
-                )}
-                disabled={sending}
-              />
-              <Button
-                type="button"
-                variant="primary"
-                size="icon"
-                onClick={() => handleSend()}
-                disabled={sending || !input.trim()}
-                className="h-[50px] w-[50px] shrink-0 shadow-md"
-                title="Send"
-                aria-label="Send message"
-              >
-                {sending && !streamingReply ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        </main>
       </div>
     </div>
   );
