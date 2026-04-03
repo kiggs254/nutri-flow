@@ -54,12 +54,35 @@ function goalAdjustmentKcal(goalText) {
 export function parseExplicitCalorieTarget(text) {
   if (!text) return null;
   const s = String(text);
-  const m = s.match(/\b(\d{3,4})\s*(?:kcal|cal|calories?)\b/i) || s.match(/\b(?:target|eat|intake|approximately|around)\s*:?\s*(\d{3,4})\b/i);
+  const m = s.match(/\b(\d{3,4})\s*(?:kcal|cal|calories?)(?:\/day|\/d|\s*per\s*day)?\b/i) || s.match(/\b(?:target|eat|intake|approximately|around)\s*:?\s*(\d{3,4})\b/i);
   if (m) {
     const n = parseInt(m[1], 10);
     if (n >= 800 && n <= 6000) return n;
   }
   return null;
+}
+
+/**
+ * Parse explicit macro targets from free-text instructions.
+ * Examples: "130g carb/day", "150g protein per day", "50g of fat/day"
+ * @param {string} text
+ * @returns {{ proteinG?: number, carbsG?: number, fatsG?: number } | null}
+ */
+export function parseMacroTargets(text) {
+  if (!text) return null;
+  const s = String(text);
+  const result = {};
+
+  // Match patterns like "150g protein", "130g carb/day", "50g of fat per day"
+  const proteinMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?protein/i);
+  const carbMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?carb(?:s|ohydrate)?/i);
+  const fatMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?fat/i);
+
+  if (proteinMatch) result.proteinG = parseInt(proteinMatch[1], 10);
+  if (carbMatch) result.carbsG = parseInt(carbMatch[1], 10);
+  if (fatMatch) result.fatsG = parseInt(fatMatch[1], 10);
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 /**
@@ -76,6 +99,12 @@ export function parseExplicitCalorieTarget(text) {
  * }} params
  */
 export function computeDailyCalorieTarget(params) {
+  // Parse macro targets from instructions/notes
+  const macroTargets =
+    parseMacroTargets(params.customInstructions) ||
+    parseMacroTargets(params.nutritionistNotes) ||
+    null;
+
   const fromInstructions =
     parseExplicitCalorieTarget(params.customInstructions) ||
     parseExplicitCalorieTarget(params.nutritionistNotes);
@@ -87,6 +116,7 @@ export function computeDailyCalorieTarget(params) {
       tdee: null,
       activityMultiplier: null,
       goalAdjustment: null,
+      macroTargets,
       source: 'explicit_instruction'
     };
   }
@@ -103,6 +133,7 @@ export function computeDailyCalorieTarget(params) {
       tdee: null,
       activityMultiplier: null,
       goalAdjustment: null,
+      macroTargets,
       source: 'fallback_default',
       note: 'Insufficient metrics for BMR; using 2000 kcal default. Enter BMR, age, weight, and height for accuracy.'
     };
@@ -120,6 +151,7 @@ export function computeDailyCalorieTarget(params) {
     tdee,
     activityMultiplier: mult,
     goalAdjustment: adj,
+    macroTargets,
     source: 'computed_tdee'
   };
 }

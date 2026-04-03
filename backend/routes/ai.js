@@ -32,11 +32,20 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
       ? `Goal calorie adjustment applied: ${tdee.goalAdjustment > 0 ? '+' : ''}${tdee.goalAdjustment} kcal/day.`
       : '',
     tdee.note ? `Note: ${tdee.note}` : '',
-    '',
-    'Each day totalCalories must be within 15% of this target unless medically contradicted by the records.',
-    'Meal calories and macros must be consistent with ingredient amounts using the VERIFIED NUTRITION DATA below when those foods appear.',
-    'Do not ignore the calorie target or nutritionist instructions in favor of generic estimates.'
   ];
+  if (tdee.macroTargets) {
+    lines.push('');
+    lines.push('DAILY MACRO TARGETS (mandatory — hit within 10%):');
+    if (tdee.macroTargets.proteinG) lines.push(`- Protein: ${tdee.macroTargets.proteinG}g/day`);
+    if (tdee.macroTargets.carbsG) lines.push(`- Carbs: ${tdee.macroTargets.carbsG}g/day`);
+    if (tdee.macroTargets.fatsG) lines.push(`- Fats: ${tdee.macroTargets.fatsG}g/day`);
+  }
+  lines.push(
+    '',
+    'Each day totalCalories must be within 5% of this target unless medically contradicted by the records.',
+    'Meal calories and macros must be consistent with ingredient amounts using the VERIFIED NUTRITION DATA below when those foods appear.',
+    'Do not ignore the calorie target, macro targets, or nutritionist instructions in favor of generic estimates.'
+  );
   if (ragContext) {
     lines.push('', ragContext);
   }
@@ -121,10 +130,13 @@ For every ingredient in every meal, follow this exact three-step chain:
 
 DO NOT estimate or guess meal totals. They must equal the ingredient arithmetic exactly.
 
-## CALORIE TARGET COMPLIANCE
+## CALORIE & MACRO TARGET COMPLIANCE
 
-- Each day's totalCalories MUST be within 5% of the target stated in the user message.
-- Choose ingredient portion weights to hit the target. If a draft day falls short, scale up
+- Each day's totalCalories MUST be within 5% of the calorie target stated in the user message.
+- If DAILY MACRO TARGETS are provided (protein/carbs/fats in grams), each day's totals for
+  those macros MUST be within 10% of the stated target. Choose foods and portion sizes to hit
+  BOTH calorie and macro targets simultaneously.
+- Choose ingredient portion weights to hit the targets. If a draft day falls short, scale up
   the largest calorie-dense ingredient proportionally. If it overshoots, scale it down.
 
 ## INGREDIENT NUTRITION RULES
@@ -172,9 +184,16 @@ function buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals) {
       `${excludedMeals.filter(m => m !== 'snacks').map(m => `Output "${m}" as an empty stub.`).join(' ')}`
     : '';
 
+  const macroBlock = tdee.macroTargets
+    ? `\nDAILY MACRO TARGETS (MANDATORY — hit these within 10%):${
+        tdee.macroTargets.proteinG ? `\n- Protein: ${tdee.macroTargets.proteinG}g/day` : ''}${
+        tdee.macroTargets.carbsG ? `\n- Carbs: ${tdee.macroTargets.carbsG}g/day` : ''}${
+        tdee.macroTargets.fatsG ? `\n- Fats: ${tdee.macroTargets.fatsG}g/day` : ''}\n`
+    : '';
+
   return `DAILY CALORIE TARGET: ${tdee.dailyCalories} kcal/day  \u2190 HIT THIS WITHIN 5%
 Target source: ${tdee.source}${tdee.bmr ? `\nBMR: ${tdee.bmr} kcal/day` : ''}${tdee.tdee ? `\nTDEE before goal adjustment: ${tdee.tdee} kcal/day (activity \xd7${tdee.activityMultiplier})` : ''}${tdee.goalAdjustment ? `\nGoal adjustment: ${tdee.goalAdjustment > 0 ? '+' : ''}${tdee.goalAdjustment} kcal/day` : ''}
-
+${macroBlock}
 ${ragContext}
 
 ---

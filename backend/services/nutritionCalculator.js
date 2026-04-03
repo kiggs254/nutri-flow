@@ -102,31 +102,70 @@ function findPieceWeight(food) {
 
 // ── Food lookup ──────────────────────────────────────────────────────────────
 
+const FOOD_COLS = 'id, name, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g, common_portions';
+
+/**
+ * Score how well a DB food name matches the search term.
+ * Higher = better. Penalise matches where the keyword is buried inside
+ * an unrelated food (e.g. "rice" inside "alcoholic beverage rice (sake)").
+ */
+function matchScore(dbName, searchTerm) {
+  const db = dbName.toLowerCase();
+  const st = searchTerm.toLowerCase();
+  // Exact start of name → best
+  if (db.startsWith(st)) return 100;
+  // Starts after a comma-space ("Chicken, breast" searching "breast")
+  if (db.includes(', ' + st)) return 80;
+  // Whole word match somewhere
+  const wordRe = new RegExp('\\b' + st.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+  if (wordRe.test(db)) return 60;
+  // Substring match (worst — "rice" inside "price")
+  return 20;
+}
+
 export async function lookupFood(supabase, foodName) {
   if (!foodName) return null;
   const clean = foodName.toLowerCase().replace(/[,()]/g, '').replace(/\s+/g, ' ').trim();
 
-  let { data } = await supabase
-    .from('nutrition_foods')
-    .select('id, name, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g, common_portions')
-    .ilike('name', `%${clean}%`)
-    .limit(10);
+  // Strategy 1: name starts with the search term (best matches)
+  let { data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
+    .ilike('name', `${clean}%`).limit(10);
 
+  // Strategy 2: search term after a comma ("Chicken, breast" for "breast")
+  if (!data?.length) {
+    ({ data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
+      .ilike('name', `%, ${clean}%`).limit(10));
+  }
+
+  // Strategy 3: contains anywhere (broad)
+  if (!data?.length) {
+    ({ data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
+      .ilike('name', `%${clean}%`).limit(15));
+  }
+
+  // Strategy 4: try individual words (progressively fewer)
   if (!data?.length) {
     const words = clean.split(' ').filter(w => w.length > 2);
     for (let i = words.length; i >= 1; i--) {
       const partial = words.slice(0, i).join(' ');
-      const r = await supabase
-        .from('nutrition_foods')
-        .select('id, name, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g, common_portions')
-        .ilike('name', `%${partial}%`)
-        .limit(10);
+      const r = await supabase.from('nutrition_foods').select(FOOD_COLS)
+        .ilike('name', `${partial}%`).limit(10);
       if (r.data?.length) { data = r.data; break; }
+      const r2 = await supabase.from('nutrition_foods').select(FOOD_COLS)
+        .ilike('name', `%${partial}%`).limit(10);
+      if (r2.data?.length) { data = r2.data; break; }
     }
   }
 
   if (!data?.length) return null;
-  data.sort((a, b) => a.name.length - b.name.length);
+
+  // Rank by match quality, then by shortest name (most generic)
+  data.sort((a, b) => {
+    const sa = matchScore(a.name, clean);
+    const sb = matchScore(b.name, clean);
+    if (sb !== sa) return sb - sa; // higher score first
+    return a.name.length - b.name.length; // shorter name first
+  });
   return data[0];
 }
 
