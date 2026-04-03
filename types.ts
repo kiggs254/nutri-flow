@@ -54,6 +54,15 @@ export interface Client {
   visceralFat?: number;
 }
 
+export interface IngredientNutrition {
+  item: string;
+  weightG: number;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatsG: number;
+}
+
 export interface Meal {
   name: string;
   calories: number;
@@ -61,6 +70,7 @@ export interface Meal {
   carbs: string;
   fats: string;
   ingredients: string[];
+  ingredientNutrition?: IngredientNutrition[];
   instructions: string;
 }
 

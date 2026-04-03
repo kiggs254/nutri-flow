@@ -9,6 +9,7 @@ import { computeDailyCalorieTarget } from '../services/tdeeCalculator.js';
 import { retrieveNutritionContext, retrieveNutritionContextForChat } from '../services/ragRetrieval.js';
 import { validatePlanNutrition } from '../services/mealPlanValidation.js';
 import { createUserSupabase, createServiceSupabase } from '../services/supabaseClients.js';
+import { recalculatePlan } from '../services/nutritionCalculator.js';
 
 const router = express.Router();
 
@@ -578,6 +579,15 @@ JSON OUTPUT FORMAT (MANDATORY):
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     }
 
+    // Server-side recalculation: replace AI's calorie/macro numbers with
+    // arithmetic derived from the nutrition_foods table (USDA data).
+    try {
+      const serviceSupabase = createServiceSupabase();
+      plan = await recalculatePlan(serviceSupabase, plan);
+    } catch (recalcErr) {
+      console.warn('[MealPlan] Server-side nutrition recalculation failed, using AI values:', recalcErr.message);
+    }
+
     const nutritionValidation = validatePlanNutrition(plan, tdee.dailyCalories);
     res.json({
       plan,
@@ -716,6 +726,13 @@ JSON OUTPUT FORMAT (MANDATORY):
       refinedPlan = parsed.map(e => normalizeEntryToDailyPlan(e, excludedMeals));
     } else {
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
+    }
+
+    try {
+      const serviceSupabase = createServiceSupabase();
+      refinedPlan = await recalculatePlan(serviceSupabase, refinedPlan);
+    } catch (recalcErr) {
+      console.warn('[MealPlan] Server-side nutrition recalculation failed on refine, using AI values:', recalcErr.message);
     }
 
     const nutritionValidation = validatePlanNutrition(refinedPlan, tdee.dailyCalories);
