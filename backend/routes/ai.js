@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { callGemini, callGeminiChat } from '../services/gemini.js';
-import { callOpenAI, callOpenAIChat, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
+import { callOpenAI, callOpenAIChat, callOpenAIThinking, uploadFileToOpenAI, deleteOpenAIFile } from '../services/openai.js';
 import { callDeepSeek, callDeepSeekChat } from '../services/deepseek.js';
 import { isWordDocument, isDocxFile, extractTextFromWordDoc } from '../services/wordExtractor.js';
 import { extractTextFromPDF } from '../services/pdfExtractor.js';
@@ -40,6 +40,241 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
     lines.push('', ragContext);
   }
   return lines.filter(Boolean).join('\n');
+}
+
+// ─── Module-scope schema (shared by generate and refine routes) ───────────────
+
+const ingredientNutritionItemSchema = {
+  type: 'object',
+  properties: {
+    item:     { type: 'string' },
+    weightG:  { type: 'number' },
+    calories: { type: 'number' },
+    proteinG: { type: 'number' },
+    carbsG:   { type: 'number' },
+    fatsG:    { type: 'number' }
+  },
+  required: ['item', 'weightG', 'calories', 'proteinG', 'carbsG', 'fatsG'],
+  additionalProperties: false
+};
+
+const mealSchema = {
+  type: 'object',
+  properties: {
+    name:                { type: 'string' },
+    calories:            { type: 'integer' },
+    protein:             { type: 'string' },
+    carbs:               { type: 'string' },
+    fats:                { type: 'string' },
+    ingredients:         { type: 'array', items: { type: 'string' } },
+    ingredientNutrition: { type: 'array', items: ingredientNutritionItemSchema },
+    instructions:        { type: 'string' }
+  },
+  required: ['name', 'calories', 'protein', 'carbs', 'fats', 'ingredients', 'ingredientNutrition', 'instructions'],
+  additionalProperties: false
+};
+
+const planResponseSchema = {
+  type: 'object',
+  properties: {
+    plan: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          day:           { type: 'string' },
+          breakfast:     mealSchema,
+          lunch:         mealSchema,
+          dinner:        mealSchema,
+          snacks:        { type: 'array', items: mealSchema },
+          totalCalories: { type: 'integer' },
+          summary:       { type: 'string' }
+        },
+        required: ['day', 'breakfast', 'lunch', 'dinner', 'snacks', 'totalCalories', 'summary'],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ['plan'],
+  additionalProperties: false
+};
+
+// ─── Thinking-model helpers (OpenAI o4-mini via Responses API) ────────────────
+
+function buildThinkingSystemInstruction() {
+  return `You are a registered dietitian creating a medically-informed 7-day meal plan.
+Your output must be a single valid JSON object matching the provided schema exactly.
+
+## CALCULATION MANDATE — NON-NEGOTIABLE
+
+For every ingredient in every meal, follow this exact three-step chain:
+
+  STEP 1 — LOOK UP: Find the food in the VERIFIED NUTRITION DATA block. If not listed,
+  use USDA FoodData Central reference values. Record: kcal/100g, protein/100g, carbs/100g, fats/100g.
+
+  STEP 2 — SCALE: portion_weight_g ÷ 100 × per_100g_value = nutrient for this portion.
+  Do this separately for calories, protein, carbs, and fats.
+
+  STEP 3 — SUM: Sum all ingredient calories → this is the meal "calories" field.
+  Sum all ingredient proteinG → format as "XXg" for "protein". Same for carbs and fats.
+
+DO NOT estimate or guess meal totals. They must equal the ingredient arithmetic exactly.
+
+## CALORIE TARGET COMPLIANCE
+
+- Each day's totalCalories MUST be within 5% of the target stated in the user message.
+- Choose ingredient portion weights to hit the target. If a draft day falls short, scale up
+  the largest calorie-dense ingredient proportionally. If it overshoots, scale it down.
+
+## INGREDIENT NUTRITION RULES
+
+- ingredientNutrition is REQUIRED for every meal and every snack.
+- Each entry must have: item (exact string from ingredients array), weightG, calories, proteinG, carbsG, fatsG.
+- meal.calories = round(sum of ingredientNutrition[*].calories)  ← MUST MATCH EXACTLY
+- meal.protein string = round(sum of proteinG) + "g"
+- Same for carbs and fats.
+- Max 5 ingredients per meal. Every ingredient MUST specify quantity and unit.
+- For liquids/oils, convert volume to grams using standard density (e.g., olive oil: 0.92 g/ml).
+
+## DATA PRIORITY
+
+1. VERIFIED NUTRITION DATA block (RAG-retrieved; use these exact numbers when the food appears)
+2. USDA FoodData Central standard reference
+3. Widely-accepted food composition tables
+Never invent values. If a food has no reliable source, substitute a simpler food that does.
+
+## HEALTH & SAFETY
+
+- Medical history, medications, and allergies are NON-NEGOTIABLE constraints.
+- Never include any ingredient the client is allergic to.
+- Account for food-drug interactions when medications are listed.
+- Respect cultural and lifestyle context from social background.
+
+## EXCLUDED MEALS
+When a meal type is excluded, output it as an empty stub object:
+{ "name": "", "calories": 0, "protein": "0g", "carbs": "0g", "fats": "0g", "ingredients": [], "ingredientNutrition": [], "instructions": "" }
+Never omit the key or set it to null.
+
+## FORMAT
+- instructions: MAX 10 words.
+- Output JSON only. No markdown, no prose.`;
+}
+
+function buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals) {
+  const referencePlansBlock = params.referencePlans?.length > 0
+    ? `\nPAST MEAL PLANS (reference style/structure only; adapt for this client):\n${JSON.stringify(params.referencePlans)}\n`
+    : '';
+
+  const excludedMealsBlock = excludedMeals.length > 0
+    ? `\nEXCLUDED MEAL TYPES (every day): ${excludedMeals.join(', ')}. ` +
+      `${excludedMeals.includes('snacks') ? 'Set "snacks" to []. ' : ''}` +
+      `${excludedMeals.filter(m => m !== 'snacks').map(m => `Output "${m}" as an empty stub.`).join(' ')}`
+    : '';
+
+  return `DAILY CALORIE TARGET: ${tdee.dailyCalories} kcal/day  \u2190 HIT THIS WITHIN 5%
+Target source: ${tdee.source}${tdee.bmr ? `\nBMR: ${tdee.bmr} kcal/day` : ''}${tdee.tdee ? `\nTDEE before goal adjustment: ${tdee.tdee} kcal/day (activity \xd7${tdee.activityMultiplier})` : ''}${tdee.goalAdjustment ? `\nGoal adjustment: ${tdee.goalAdjustment > 0 ? '+' : ''}${tdee.goalAdjustment} kcal/day` : ''}
+
+${ragContext}
+
+---
+CLIENT PROFILE:
+- Age / Sex: ${params.age} y/o ${params.gender}
+- Weight: ${params.weight} kg | Height: ${params.height} cm
+- BMR (device/measured): ${params.bmr ?? 'not provided'} kcal/day
+- Metabolic Age: ${params.metabolicAge ?? 'not provided'} | Visceral Fat: ${params.visceralFat ?? 'not provided'}
+- Goal: ${params.goal}
+- Activity Level: ${params.activityLevel}
+
+HEALTH RECORDS (non-negotiable):
+- Medical History: ${params.medicalHistory || 'None'}
+- Medications: ${params.medications || 'None'}
+- Allergies / Exclusions: ${params.allergies || 'None'}
+
+PREFERENCES & CONTEXT:
+- Dietary History: ${params.dietaryHistory || 'None'}
+- Preferences: ${params.preferences || 'None'}
+- Social Background: ${params.socialBackground || 'None'}
+
+NUTRITIONIST INSTRUCTIONS:
+${params.customInstructions || 'None'}
+
+NUTRITIONIST NOTES:
+${params.nutritionistNotes || 'None'}
+${referencePlansBlock}${excludedMealsBlock}
+
+Generate a 7-day (Monday\u2013Sunday) meal plan. Populate ingredientNutrition for every meal.
+Each day's totalCalories must land within 5% of ${tdee.dailyCalories} kcal.`;
+}
+
+function buildThinkingRefinePrompt(params, tdee, ragContext, excludedMeals, plan, instructions) {
+  const base = buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals);
+  return `${base}
+
+EXISTING PLAN (modify only what the requested changes require; leave other days intact):
+${JSON.stringify(plan)}
+
+REQUESTED CHANGES:
+${instructions}
+
+Return the FULL updated 7-day plan. Recalculate ingredientNutrition only for meals you modify.`;
+}
+
+// ─── Shared normalizer (hoisted from both route handlers) ─────────────────────
+
+function toNullIfStub(meal) {
+  if (!meal) return null;
+  if (meal.name === '' && Number(meal.calories) === 0) return null;
+  return meal;
+}
+
+function normalizeEntryToDailyPlan(entry, excludedMeals = []) {
+  if (!entry || typeof entry !== 'object') {
+    throw new Error('Invalid plan entry format from model.');
+  }
+
+  const anyEntry = entry;
+  const day = anyEntry.day ?? 'Day';
+
+  let breakfast = anyEntry.breakfast;
+  let lunch = anyEntry.lunch;
+  let dinner = anyEntry.dinner;
+  let snacks = Array.isArray(anyEntry.snacks) ? anyEntry.snacks : [];
+
+  // If model used a generic "meals" array instead of breakfast/lunch/dinner
+  const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
+  if (!breakfast && !lunch && !dinner && meals && meals.length) {
+    let mealIndex = 0;
+    if (!excludedMeals.includes('breakfast')) { breakfast = meals[mealIndex] ?? null; mealIndex++; } else { breakfast = null; }
+    if (!excludedMeals.includes('lunch')) { lunch = meals[mealIndex] ?? null; mealIndex++; } else { lunch = null; }
+    if (!excludedMeals.includes('dinner')) { dinner = meals[mealIndex] ?? null; mealIndex++; } else { dinner = null; }
+    if (!excludedMeals.includes('snacks')) {
+      const extraSnacks = meals.slice(mealIndex);
+      if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
+    }
+  } else {
+    if (excludedMeals.includes('breakfast')) breakfast = null;
+    if (excludedMeals.includes('lunch')) lunch = null;
+    if (excludedMeals.includes('dinner')) dinner = null;
+    if (excludedMeals.includes('snacks')) snacks = [];
+  }
+
+  // Convert empty stubs (returned by thinking model under strict schema) back to null
+  breakfast = toNullIfStub(breakfast);
+  lunch     = toNullIfStub(lunch);
+  dinner    = toNullIfStub(dinner);
+
+  if (!Array.isArray(snacks)) snacks = [];
+
+  let totalCalories = anyEntry.totalCalories;
+  if (!totalCalories || totalCalories === 0) {
+    totalCalories = 0;
+    if (breakfast?.calories) totalCalories += breakfast.calories;
+    if (lunch?.calories) totalCalories += lunch.calories;
+    if (dinner?.calories) totalCalories += dinner.calories;
+    if (Array.isArray(snacks)) snacks.forEach((s) => { if (s?.calories) totalCalories += s.calories; });
+  }
+
+  return { day, breakfast, lunch, dinner, snacks, totalCalories, summary: anyEntry.summary ?? '' };
 }
 
 // Get available AI providers (based on configured API keys)
@@ -122,7 +357,7 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     const accessToken = getAccessToken(req);
     if (accessToken && params.disableRag !== true) {
       try {
-        const r = await retrieveNutritionContext(accessToken, params, { matchCount: 26 });
+        const r = await retrieveNutritionContext(accessToken, params, { matchCount: 40 });
         ragContext = r.contextBlock || '';
         ragMeta = { matchCount: r.matches?.length ?? 0, error: r.error };
       } catch (e) {
@@ -248,76 +483,7 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
     CRITICAL: All ingredients must specify exact quantities (e.g., "20g porridge", not just "porridge").
   `;
 
-    const planResponseSchema = {
-      type: "object",
-      properties: {
-        plan: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              day: { type: "string" },
-              breakfast: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              lunch: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              dinner: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              snacks: { type: "array", items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              }},
-              totalCalories: { type: "integer" },
-              summary: { type: "string" }
-            },
-            required: ["day", "breakfast", "lunch", "dinner", "snacks", "totalCalories", "summary"]
-          }
-        }
-      },
-      required: ["plan"]
-    };
+    // planResponseSchema is defined at module scope (includes ingredientNutrition)
 
     let resultText;
 
@@ -377,16 +543,14 @@ JSON OUTPUT FORMAT (MANDATORY):
       const mimeType = imageParts.length > 0 ? imageParts[0].mimeType : undefined;
 
       if (provider === 'openai') {
-        resultText = await callOpenAI({
-          systemPrompt: openAISystemPrompt,
-          userPrompt,
-          imageBase64,
-          mimeType,
+        resultText = await callOpenAIThinking({
+          instructions: buildThinkingSystemInstruction(),
+          userPrompt: buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals),
           imageParts: imageParts.length > 0 ? imageParts : undefined,
-          jsonMode: true,
-          model: 'gpt-4o',
-          temperature: 0.7,
-          maxTokens: 4096
+          jsonSchema: planResponseSchema,
+          schemaName: 'meal_plan',
+          maxCompletionTokens: 20000,
+          reasoningEffort: 'high'
         });
       } else {
         resultText = await callDeepSeek({
@@ -405,89 +569,11 @@ JSON OUTPUT FORMAT (MANDATORY):
     // Parse and normalize the response
     const parsed = JSON.parse(resultText || '{}');
 
-    const normalizeEntryToDailyPlan = (entry) => {
-      if (!entry || typeof entry !== 'object') {
-        throw new Error('Invalid plan entry format from model.');
-      }
-
-      const anyEntry = entry;
-      const day = anyEntry.day ?? 'Day';
-
-      let breakfast = anyEntry.breakfast;
-      let lunch = anyEntry.lunch;
-      let dinner = anyEntry.dinner;
-      let snacks = Array.isArray(anyEntry.snacks) ? anyEntry.snacks : [];
-
-      // If model used a generic "meals" array instead of breakfast/lunch/dinner
-      const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
-      if (!breakfast && !lunch && !dinner && meals && meals.length) {
-        // Assign meals based on what's excluded
-        let mealIndex = 0;
-        if (!excludedMeals.includes('breakfast')) {
-          breakfast = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          breakfast = null;
-        }
-        if (!excludedMeals.includes('lunch')) {
-          lunch = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          lunch = null;
-        }
-        if (!excludedMeals.includes('dinner')) {
-          dinner = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          dinner = null;
-        }
-        // Add remaining meals as snacks if snacks are not excluded
-        if (!excludedMeals.includes('snacks')) {
-          const extraSnacks = meals.slice(mealIndex);
-          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
-        }
-      } else {
-        // Apply exclusions to individual meal fields
-        if (excludedMeals.includes('breakfast')) breakfast = null;
-        if (excludedMeals.includes('lunch')) lunch = null;
-        if (excludedMeals.includes('dinner')) dinner = null;
-        if (excludedMeals.includes('snacks')) snacks = [];
-      }
-
-      if (!Array.isArray(snacks)) {
-        snacks = [];
-      }
-
-      // Calculate totalCalories from all meals if not provided
-      let totalCalories = anyEntry.totalCalories;
-      if (!totalCalories || totalCalories === 0) {
-        totalCalories = 0;
-        if (breakfast?.calories) totalCalories += breakfast.calories;
-        if (lunch?.calories) totalCalories += lunch.calories;
-        if (dinner?.calories) totalCalories += dinner.calories;
-        if (Array.isArray(snacks)) {
-          snacks.forEach((snack) => {
-            if (snack?.calories) totalCalories += snack.calories;
-          });
-        }
-      }
-
-      return {
-        day,
-        breakfast,
-        lunch,
-        dinner,
-        snacks,
-        totalCalories,
-        summary: anyEntry.summary ?? ''
-      };
-    };
-
     let plan;
     if (Array.isArray(parsed.plan)) {
-      plan = parsed.plan.map(normalizeEntryToDailyPlan);
+      plan = parsed.plan.map(e => normalizeEntryToDailyPlan(e, excludedMeals));
     } else if (Array.isArray(parsed)) {
-      plan = parsed.map(normalizeEntryToDailyPlan);
+      plan = parsed.map(e => normalizeEntryToDailyPlan(e, excludedMeals));
     } else {
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     }
@@ -535,51 +621,19 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     const refineAccessToken = getAccessToken(req);
     if (refineAccessToken && params.disableRag !== true) {
       try {
-        const r = await retrieveNutritionContext(refineAccessToken, params, { matchCount: 26 });
+        const r = await retrieveNutritionContext(refineAccessToken, params, { matchCount: 40 });
         ragContext = r.contextBlock || '';
         ragMeta = { matchCount: r.matches?.length ?? 0, error: r.error };
       } catch (e) {
         ragMeta = { error: e.message };
       }
     }
-    const nutritionPreamble = buildMealPlanNutritionPreamble(params, tdee, ragContext);
+    // Build prompts and call the appropriate provider
+    const refineSystemInstruction = buildThinkingSystemInstruction();
+    const geminiNutritionPreamble = buildMealPlanNutritionPreamble(params, tdee, ragContext);
 
-    const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
-  CRITICAL RULES:
-  1. Adhere strictly to all health constraints and medical considerations.
-  2. You MUST incorporate the client's Records in every decision:
-     - medicalHistory
-     - allergies
-     - medications (and potential food/medication interactions)
-     - dietaryHistory
-     - socialBackground (schedule, culture, lifestyle constraints)
-  3. Base meal suggestions on the client's goal and dietary history/preferences.
-  4. When VERIFIED NUTRITION DATA is provided in the user message, you MUST use those kcal and macro values per 100g (and stated portions) for those foods—do not substitute different numbers for the same food.
-  5. Output must be a valid JSON object matching the requested schema exactly.
-  6. Instructions: MAX 10 words.
-  7. Ingredients: MAX 5 items, each MUST include specific quantity.
-  8. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
-  9. Snacks MUST include full nutrition + instructions, same as other meals.
-  10. Be concise.
-  
-  MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
-  - calories: Must be a positive integer (e.g., 350, 450, 520)
-  - protein: Must be a string with numeric value and "g" unit (e.g., "25g", "30g", "18g")
-  - carbs: Must be a string with numeric value and "g" unit (e.g., "45g", "60g", "35g")
-  - fats: Must be a string with numeric value and "g" unit (e.g., "12g", "15g", "8g")
-  
-  INGREDIENTS FORMAT - CRITICAL:
-  - Each ingredient MUST include the specific quantity/weight
-  - Use appropriate units: grams (g), milliliters (ml), pieces (pcs), cups, tablespoons (tbsp), teaspoons (tsp)
-  - Format: "quantity unit ingredient name" (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice", "200ml milk")
-  - Be specific and accurate with quantities to match the nutritional values provided
-  
-  Every breakfast, lunch, dinner, and snack MUST include:
-  1. Accurate calories and macro grammages
-  2. Specific quantities for ALL ingredients (e.g., "20g porridge", "150g chicken", "2 eggs", "1 cup rice")`;
-
-    const userPrompt = `
-    ${nutritionPreamble}
+    const geminiRefineUserPrompt = `
+    ${geminiNutritionPreamble}
 
     Client Profile:
     - Age: ${params.age} y/o ${params.gender}
@@ -588,9 +642,6 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     - Primary Goal: ${params.goal}
     - Activity Level: ${params.activityLevel}
 
-    Nutrition target (server-computed—follow the DAILY CALORIE TARGET above):
-    - Keep each day's totalCalories aligned with that target within 15% unless contraindicated by medical records.
-
     Records (MUST BE CONSIDERED):
     - Medical History: ${params.medicalHistory || 'None provided.'}
     - Current Medications: ${params.medications || 'None provided.'}
@@ -598,8 +649,7 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     - Dietary History: ${params.dietaryHistory || 'None provided.'}
     - Social Background: ${params.socialBackground || 'None provided.'}
 
-    Nutritionist notes (use for meal planning):
-    - ${params.nutritionistNotes || 'None.'}
+    Nutritionist notes: ${params.nutritionistNotes || 'None.'}
 
     Existing meal plan JSON (edit this plan):
     ${JSON.stringify(plan)}
@@ -607,128 +657,50 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
     Requested changes:
     ${String(instructions).trim()}
 
-    Return the FULL updated 7-day plan as valid JSON in the required format.${
+    Return the FULL updated 7-day plan as valid JSON.${
       excludedMeals.length > 0
         ? `\nIMPORTANT: Meals excluded for every day: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to [] for every day.' : ''}`
         : ''
     }
   `;
 
-    const planResponseSchema = {
-      type: "object",
-      properties: {
-        plan: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              day: { type: "string" },
-              breakfast: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              lunch: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              dinner: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              },
-              snacks: { type: "array", items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  calories: { type: "integer" },
-                  protein: { type: "string" },
-                  carbs: { type: "string" },
-                  fats: { type: "string" },
-                  ingredients: { type: "array", items: { type: "string" } },
-                  instructions: { type: "string" }
-                },
-                required: ["name", "calories", "protein", "carbs", "fats", "ingredients", "instructions"]
-              }},
-              totalCalories: { type: "integer" },
-              summary: { type: "string" }
-            },
-            required: ["day", "breakfast", "lunch", "dinner", "snacks", "totalCalories", "summary"]
-          }
-        }
-      },
-      required: ["plan"]
-    };
+    // planResponseSchema is defined at module scope (includes ingredientNutrition)
 
     const excludeInstruction = excludedMeals.length > 0
       ? `\nIMPORTANT: Do NOT include the following meals in the meal plan: ${excludedMeals.join(', ')}. ${excludedMeals.includes('snacks') ? 'Set "snacks" to an empty array [] for every day.' : ''}${excludedMeals.filter(m => m !== 'snacks').length > 0 ? ` Set ${excludedMeals.filter(m => m !== 'snacks').map(m => `"${m}"`).join(', ')} to null or omit ${excludedMeals.filter(m => m !== 'snacks').length === 1 ? 'it' : 'them'} entirely.` : ''}`
       : '';
 
-    const openAISystemPrompt = systemInstruction + `
+    const deepSeekSystemPrompt = refineSystemInstruction + `
 
 JSON OUTPUT FORMAT (MANDATORY):
 - Return a single JSON object with a top-level key "plan"
-- "plan" must be an array of 7 items (one per day), where each item has this exact structure:
-  {
-    "day": "Monday",
-    "breakfast": ${excludedMeals.includes('breakfast') ? 'null' : '{ /* Meal object */ }'},
-    "lunch": ${excludedMeals.includes('lunch') ? 'null' : '{ /* Meal object */ }'},
-    "dinner": ${excludedMeals.includes('dinner') ? 'null' : '{ /* Meal object */ }'},
-    "snacks": ${excludedMeals.includes('snacks') ? '[]' : '[ /* array of Meal objects */ ]'}
-  }
-- Do NOT use a "meals" array – you MUST use the separate keys "breakfast", "lunch", "dinner", and "snacks".
-- Snacks must be a SEPARATE section under "snacks" (array). Do NOT merge snacks into breakfast/lunch/dinner.
-- REMEMBER: Every ingredient in the ingredients array MUST include specific quantities (e.g., "150g chicken breast", "20g porridge", "2 eggs", "1 cup rice").${excludeInstruction}
+- "plan" must be an array of 7 items (one per day) with keys: "breakfast", "lunch", "dinner", "snacks".
+- Every ingredient MUST include specific quantities.${excludeInstruction}
 `;
 
     let resultText;
     if (provider === 'gemini') {
       resultText = await callGemini({
-        systemInstruction,
-        parts: [{ text: userPrompt }],
+        systemInstruction: refineSystemInstruction,
+        parts: [{ text: geminiRefineUserPrompt }],
         responseSchema: planResponseSchema,
         responseMimeType: 'application/json',
         temperature: 0.7,
         maxOutputTokens: 8192
       });
     } else if (provider === 'openai') {
-      resultText = await callOpenAI({
-        systemPrompt: openAISystemPrompt,
-        userPrompt,
-        jsonMode: true,
-        model: 'gpt-4o',
-        temperature: 0.7,
-        maxTokens: 4096
+      resultText = await callOpenAIThinking({
+        instructions: refineSystemInstruction,
+        userPrompt: buildThinkingRefinePrompt(params, tdee, ragContext, excludedMeals, plan, String(instructions).trim()),
+        jsonSchema: planResponseSchema,
+        schemaName: 'meal_plan',
+        maxCompletionTokens: 20000,
+        reasoningEffort: 'high'
       });
     } else {
       resultText = await callDeepSeek({
-        systemPrompt: openAISystemPrompt,
-        userPrompt,
+        systemPrompt: deepSeekSystemPrompt,
+        userPrompt: geminiRefineUserPrompt,
         jsonMode: true,
         temperature: 0.7,
         maxTokens: 4096
@@ -737,84 +709,11 @@ JSON OUTPUT FORMAT (MANDATORY):
 
     const parsed = JSON.parse(resultText || '{}');
 
-    const normalizeEntryToDailyPlan = (entry) => {
-      if (!entry || typeof entry !== 'object') {
-        throw new Error('Invalid plan entry format from model.');
-      }
-
-      const anyEntry = entry;
-      const day = anyEntry.day ?? 'Day';
-
-      let breakfast = anyEntry.breakfast;
-      let lunch = anyEntry.lunch;
-      let dinner = anyEntry.dinner;
-      let snacks = Array.isArray(anyEntry.snacks) ? anyEntry.snacks : [];
-
-      const meals = Array.isArray(anyEntry.meals) ? anyEntry.meals : undefined;
-      if (!breakfast && !lunch && !dinner && meals && meals.length) {
-        let mealIndex = 0;
-        if (!excludedMeals.includes('breakfast')) {
-          breakfast = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          breakfast = null;
-        }
-        if (!excludedMeals.includes('lunch')) {
-          lunch = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          lunch = null;
-        }
-        if (!excludedMeals.includes('dinner')) {
-          dinner = meals[mealIndex] ?? null;
-          mealIndex++;
-        } else {
-          dinner = null;
-        }
-        if (!excludedMeals.includes('snacks')) {
-          const extraSnacks = meals.slice(mealIndex);
-          if (extraSnacks.length > 0) snacks = snacks.concat(extraSnacks);
-        }
-      } else {
-        if (excludedMeals.includes('breakfast')) breakfast = null;
-        if (excludedMeals.includes('lunch')) lunch = null;
-        if (excludedMeals.includes('dinner')) dinner = null;
-        if (excludedMeals.includes('snacks')) snacks = [];
-      }
-
-      if (!Array.isArray(snacks)) {
-        snacks = [];
-      }
-
-      let totalCalories = anyEntry.totalCalories;
-      if (!totalCalories || totalCalories === 0) {
-        totalCalories = 0;
-        if (breakfast?.calories) totalCalories += breakfast.calories;
-        if (lunch?.calories) totalCalories += lunch.calories;
-        if (dinner?.calories) totalCalories += dinner.calories;
-        if (Array.isArray(snacks)) {
-          snacks.forEach((snack) => {
-            if (snack?.calories) totalCalories += snack.calories;
-          });
-        }
-      }
-
-      return {
-        day,
-        breakfast,
-        lunch,
-        dinner,
-        snacks,
-        totalCalories,
-        summary: anyEntry.summary ?? ''
-      };
-    };
-
     let refinedPlan;
     if (Array.isArray(parsed.plan)) {
-      refinedPlan = parsed.plan.map(normalizeEntryToDailyPlan);
+      refinedPlan = parsed.plan.map(e => normalizeEntryToDailyPlan(e, excludedMeals));
     } else if (Array.isArray(parsed)) {
-      refinedPlan = parsed.map(normalizeEntryToDailyPlan);
+      refinedPlan = parsed.map(e => normalizeEntryToDailyPlan(e, excludedMeals));
     } else {
       throw new Error("Response structure did not match expected schema. Expected { plan: DailyPlan[] }.");
     }

@@ -243,6 +243,87 @@ export async function callOpenAI({
 }
 
 /**
+ * Call the OpenAI Responses API using a thinking model (o4-mini / o3).
+ * Uses POST /v1/responses — different shape from Chat Completions:
+ *   - "instructions" is a top-level system param (not a system message)
+ *   - "input" replaces "messages"
+ *   - structured output via text.format (not response_format)
+ *   - reasoning effort via "reasoning" param
+ *   - temperature is NOT accepted
+ *
+ * @param {{
+ *   model?: string,
+ *   instructions: string,
+ *   userPrompt: string,
+ *   imageParts?: Array<{ data: string, mimeType: string }>,
+ *   jsonSchema?: object,
+ *   schemaName?: string,
+ *   maxCompletionTokens?: number,
+ *   reasoningEffort?: 'low' | 'medium' | 'high'
+ * }} opts
+ * @returns {Promise<string>}
+ */
+export async function callOpenAIThinking({
+  model = 'o4-mini',
+  instructions,
+  userPrompt,
+  imageParts,
+  jsonSchema,
+  schemaName = 'meal_plan',
+  maxCompletionTokens = 20000,
+  reasoningEffort = 'high'
+}) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+
+  const userContent = [{ type: 'input_text', text: userPrompt }];
+  if (imageParts?.length > 0) {
+    for (const part of imageParts) {
+      if (part.mimeType?.startsWith('image/')) {
+        userContent.push({ type: 'input_image', image_url: `data:${part.mimeType};base64,${part.data}` });
+      }
+    }
+  }
+
+  const body = {
+    model,
+    instructions,
+    input: [{ role: 'user', content: userContent }],
+    reasoning: { effort: reasoningEffort },
+    max_completion_tokens: maxCompletionTokens
+  };
+
+  if (jsonSchema) {
+    body.text = {
+      format: { type: 'json_schema', name: schemaName, strict: true, schema: jsonSchema }
+    };
+  }
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+    throw new Error(`OpenAI Responses API Error: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  // Convenience field first; fall back to traversing output array
+  if (data.output_text != null) return data.output_text;
+  for (const item of (data.output ?? [])) {
+    if (item.type === 'message') {
+      for (const part of (item.content ?? [])) {
+        if (part.type === 'output_text' && typeof part.text === 'string') return part.text;
+      }
+    }
+  }
+  throw new Error('OpenAI Responses API returned no usable text output');
+}
+
+/**
  * @param {{ model?: string, messages: Array<{ role: string, content: string }>, temperature?: number, maxTokens?: number }} opts
  */
 export async function callOpenAIChat({

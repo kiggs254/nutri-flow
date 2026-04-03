@@ -93,7 +93,7 @@ function rerankAndFilter(matches, params) {
   });
 
   scored.sort((a, b) => b._score - a._score);
-  return scored.filter((m) => m._score > 0.05).slice(0, 28);
+  return scored.filter((m) => m._score > 0.05).slice(0, 40);
 }
 
 function tokenizeAllergies(text) {

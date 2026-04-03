@@ -35,7 +35,7 @@ function computeDayCaloriesFromMeals(day) {
  * @param {{ toleranceRatio?: number }} [opts]
  */
 export function validatePlanNutrition(plan, targetDailyKcal, opts = {}) {
-  const tolerance = opts.toleranceRatio ?? 0.2;
+  const tolerance = opts.toleranceRatio ?? 0.1;
   const warnings = [];
   const perDay = [];
 
@@ -56,9 +56,9 @@ export function validatePlanNutrition(plan, targetDailyKcal, opts = {}) {
       );
     }
 
-    if (reported > 0 && summed > 0 && Math.abs(reported - summed) / Math.max(reported, 1) > 0.15) {
+    if (reported > 0 && summed > 0 && Math.abs(reported - summed) / Math.max(reported, 1) > 0.08) {
       dayWarnings.push(
-        `Day "${day.day}": totalCalories (${reported}) vs sum of meals (${summed}) mismatch >15%.`
+        `Day "${day.day}": totalCalories (${reported}) vs sum of meals (${summed}) mismatch >8%.`
       );
     }
 
@@ -75,6 +75,15 @@ export function validatePlanNutrition(plan, targetDailyKcal, opts = {}) {
         dayWarnings.push(
           `Meal "${m.name}": calories (${kcal}) inconsistent with macros (~${Math.round(macroKcal)} kcal from P/C/F).`
         );
+      }
+
+      if (Array.isArray(m.ingredientNutrition) && m.ingredientNutrition.length > 0) {
+        const ingCalSum = m.ingredientNutrition.reduce((acc, ing) => acc + (Number(ing.calories) || 0), 0);
+        if (kcal > 0 && Math.abs(ingCalSum - kcal) / kcal > 0.05) {
+          dayWarnings.push(
+            `Meal "${m.name}": ingredientNutrition sum (${Math.round(ingCalSum)} kcal) vs meal calories (${kcal} kcal) — arithmetic mismatch >5%.`
+          );
+        }
       }
     }
 
