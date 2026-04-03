@@ -563,15 +563,32 @@ JSON OUTPUT FORMAT (MANDATORY):
       const mimeType = imageParts.length > 0 ? imageParts[0].mimeType : undefined;
 
       if (provider === 'openai') {
-        resultText = await callOpenAIThinking({
-          instructions: buildThinkingSystemInstruction(),
-          userPrompt: buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals),
-          imageParts: imageParts.length > 0 ? imageParts : undefined,
-          jsonSchema: planResponseSchema,
-          schemaName: 'meal_plan',
-          maxCompletionTokens: 20000,
-          reasoningEffort: 'high'
-        });
+        try {
+          resultText = await callOpenAIThinking({
+            instructions: buildThinkingSystemInstruction(),
+            userPrompt: buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals),
+            imageParts: imageParts.length > 0 ? imageParts : undefined,
+            jsonSchema: planResponseSchema,
+            schemaName: 'meal_plan',
+            maxCompletionTokens: 32000,
+            reasoningEffort: 'high'
+          });
+          // Verify the response is valid JSON — thinking models can return refusals as plain text
+          JSON.parse(resultText);
+        } catch (thinkingErr) {
+          console.warn('[MealPlan] o4-mini failed, falling back to gpt-4o:', thinkingErr.message);
+          resultText = await callOpenAI({
+            systemPrompt: openAISystemPrompt,
+            userPrompt,
+            imageBase64,
+            mimeType,
+            imageParts: imageParts.length > 0 ? imageParts : undefined,
+            jsonMode: true,
+            model: 'gpt-4o',
+            temperature: 0.7,
+            maxTokens: 8192
+          });
+        }
       } else {
         resultText = await callDeepSeek({
           systemPrompt: openAISystemPrompt,
@@ -718,14 +735,27 @@ JSON OUTPUT FORMAT (MANDATORY):
         maxOutputTokens: 8192
       });
     } else if (provider === 'openai') {
-      resultText = await callOpenAIThinking({
-        instructions: refineSystemInstruction,
-        userPrompt: buildThinkingRefinePrompt(params, tdee, ragContext, excludedMeals, plan, String(instructions).trim()),
-        jsonSchema: planResponseSchema,
-        schemaName: 'meal_plan',
-        maxCompletionTokens: 20000,
-        reasoningEffort: 'high'
-      });
+      try {
+        resultText = await callOpenAIThinking({
+          instructions: refineSystemInstruction,
+          userPrompt: buildThinkingRefinePrompt(params, tdee, ragContext, excludedMeals, plan, String(instructions).trim()),
+          jsonSchema: planResponseSchema,
+          schemaName: 'meal_plan',
+          maxCompletionTokens: 32000,
+          reasoningEffort: 'high'
+        });
+        JSON.parse(resultText);
+      } catch (thinkingErr) {
+        console.warn('[MealPlan refine] o4-mini failed, falling back to gpt-4o:', thinkingErr.message);
+        resultText = await callOpenAI({
+          systemPrompt: deepSeekSystemPrompt,
+          userPrompt: geminiRefineUserPrompt,
+          jsonMode: true,
+          model: 'gpt-4o',
+          temperature: 0.7,
+          maxTokens: 8192
+        });
+      }
     } else {
       resultText = await callDeepSeek({
         systemPrompt: deepSeekSystemPrompt,
