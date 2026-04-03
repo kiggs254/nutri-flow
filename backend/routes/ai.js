@@ -53,34 +53,21 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
 }
 
 // ─── Module-scope schema (shared by generate and refine routes) ───────────────
-
-const ingredientNutritionItemSchema = {
-  type: 'object',
-  properties: {
-    item:     { type: 'string' },
-    weightG:  { type: 'number' },
-    calories: { type: 'number' },
-    proteinG: { type: 'number' },
-    carbsG:   { type: 'number' },
-    fatsG:    { type: 'number' }
-  },
-  required: ['item', 'weightG', 'calories', 'proteinG', 'carbsG', 'fatsG'],
-  additionalProperties: false
-};
+// The AI only outputs food names, portions, and approximate macros.
+// The server-side nutritionCalculator.js handles exact arithmetic and adds ingredientNutrition.
 
 const mealSchema = {
   type: 'object',
   properties: {
-    name:                { type: 'string' },
-    calories:            { type: 'integer' },
-    protein:             { type: 'string' },
-    carbs:               { type: 'string' },
-    fats:                { type: 'string' },
-    ingredients:         { type: 'array', items: { type: 'string' } },
-    ingredientNutrition: { type: 'array', items: ingredientNutritionItemSchema },
-    instructions:        { type: 'string' }
+    name:         { type: 'string' },
+    calories:     { type: 'integer' },
+    protein:      { type: 'string' },
+    carbs:        { type: 'string' },
+    fats:         { type: 'string' },
+    ingredients:  { type: 'array', items: { type: 'string' } },
+    instructions: { type: 'string' }
   },
-  required: ['name', 'calories', 'protein', 'carbs', 'fats', 'ingredients', 'ingredientNutrition', 'instructions'],
+  required: ['name', 'calories', 'protein', 'carbs', 'fats', 'ingredients', 'instructions'],
   additionalProperties: false
 };
 
@@ -115,21 +102,6 @@ function buildThinkingSystemInstruction() {
   return `You are a registered dietitian creating a medically-informed 7-day meal plan.
 Your output must be a single valid JSON object matching the provided schema exactly.
 
-## CALCULATION MANDATE — NON-NEGOTIABLE
-
-For every ingredient in every meal, follow this exact three-step chain:
-
-  STEP 1 — LOOK UP: Find the food in the VERIFIED NUTRITION DATA block. If not listed,
-  use USDA FoodData Central reference values. Record: kcal/100g, protein/100g, carbs/100g, fats/100g.
-
-  STEP 2 — SCALE: portion_weight_g ÷ 100 × per_100g_value = nutrient for this portion.
-  Do this separately for calories, protein, carbs, and fats.
-
-  STEP 3 — SUM: Sum all ingredient calories → this is the meal "calories" field.
-  Sum all ingredient proteinG → format as "XXg" for "protein". Same for carbs and fats.
-
-DO NOT estimate or guess meal totals. They must equal the ingredient arithmetic exactly.
-
 ## CALORIE & MACRO TARGET COMPLIANCE
 
 - Each day's totalCalories MUST be within 5% of the calorie target stated in the user message.
@@ -139,22 +111,14 @@ DO NOT estimate or guess meal totals. They must equal the ingredient arithmetic 
 - Choose ingredient portion weights to hit the targets. If a draft day falls short, scale up
   the largest calorie-dense ingredient proportionally. If it overshoots, scale it down.
 
-## INGREDIENT NUTRITION RULES
+## INGREDIENT FORMAT — CRITICAL
 
-- ingredientNutrition is REQUIRED for every meal and every snack.
-- Each entry must have: item (exact string from ingredients array), weightG, calories, proteinG, carbsG, fatsG.
-- meal.calories = round(sum of ingredientNutrition[*].calories)  ← MUST MATCH EXACTLY
-- meal.protein string = round(sum of proteinG) + "g"
-- Same for carbs and fats.
-- Max 5 ingredients per meal. Every ingredient MUST specify quantity and unit.
-- For liquids/oils, convert volume to grams using standard density (e.g., olive oil: 0.92 g/ml).
-
-## DATA PRIORITY
-
-1. VERIFIED NUTRITION DATA block (RAG-retrieved; use these exact numbers when the food appears)
-2. USDA FoodData Central standard reference
-3. Widely-accepted food composition tables
-Never invent values. If a food has no reliable source, substitute a simpler food that does.
+- Max 5 ingredients per meal.
+- Every ingredient MUST include a specific weight in grams: "150g chicken breast", "80g rice", "200ml milk".
+- Use common, recognizable food names (e.g. "chicken breast" not "poultry pectoralis").
+- When VERIFIED NUTRITION DATA is provided, use those foods and their per-100g values to
+  estimate accurate portion sizes and calorie/macro totals.
+- For liquids/oils, include volume or weight (e.g., "15ml olive oil", "200ml milk").
 
 ## HEALTH & SAFETY
 
@@ -165,7 +129,7 @@ Never invent values. If a food has no reliable source, substitute a simpler food
 
 ## EXCLUDED MEALS
 When a meal type is excluded, output it as an empty stub object:
-{ "name": "", "calories": 0, "protein": "0g", "carbs": "0g", "fats": "0g", "ingredients": [], "ingredientNutrition": [], "instructions": "" }
+{ "name": "", "calories": 0, "protein": "0g", "carbs": "0g", "fats": "0g", "ingredients": [], "instructions": "" }
 Never omit the key or set it to null.
 
 ## FORMAT
@@ -222,7 +186,7 @@ NUTRITIONIST NOTES:
 ${params.nutritionistNotes || 'None'}
 ${referencePlansBlock}${excludedMealsBlock}
 
-Generate a 7-day (Monday\u2013Sunday) meal plan. Populate ingredientNutrition for every meal.
+Generate a 7-day (Monday\u2013Sunday) meal plan. Every ingredient must include its weight in grams.
 Each day's totalCalories must land within 5% of ${tdee.dailyCalories} kcal.`;
 }
 
@@ -236,7 +200,7 @@ ${JSON.stringify(plan)}
 REQUESTED CHANGES:
 ${instructions}
 
-Return the FULL updated 7-day plan. Recalculate ingredientNutrition only for meals you modify.`;
+Return the FULL updated 7-day plan with all ingredient weights in grams.`;
 }
 
 // ─── Shared normalizer (hoisted from both route handlers) ─────────────────────
