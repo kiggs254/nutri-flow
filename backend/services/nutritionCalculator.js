@@ -250,11 +250,19 @@ export async function recalculateMeal(supabase, meal) {
     if (calc) {
       calculated.push(calc);
       cleanIngredients.push(calc._cleanLabel || calc.item);
-    } else if (aiIngNutrition[i]) {
-      calculated.push({ ...aiIngNutrition[i], _source: 'ai_fallback' });
-      cleanIngredients.push(ingredients[i]); // keep original
     } else {
-      cleanIngredients.push(ingredients[i]); // keep original
+      // DB lookup failed — still format the ingredient with a weight if parseable
+      const parsed = parseIngredient(ingredients[i]);
+      if (parsed) {
+        const wg = resolveWeightG(parsed, null);
+        const weight = wg ? `${Math.round(wg)}g` : (parsed.unit === 'g' ? `${Math.round(parsed.qty)}g` : `${parsed.qty} ${parsed.unit}`);
+        cleanIngredients.push(`${parsed.food} ${weight}`);
+      } else {
+        cleanIngredients.push(ingredients[i]);
+      }
+      if (aiIngNutrition[i]) {
+        calculated.push({ ...aiIngNutrition[i], _source: 'ai_fallback' });
+      }
     }
   }
 
