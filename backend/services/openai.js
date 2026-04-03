@@ -290,7 +290,7 @@ export async function callOpenAIThinking({
     instructions,
     input: [{ role: 'user', content: userContent }],
     reasoning: { effort: reasoningEffort },
-    max_completion_tokens: maxCompletionTokens
+    max_output_tokens: maxCompletionTokens
   };
 
   if (jsonSchema) {
