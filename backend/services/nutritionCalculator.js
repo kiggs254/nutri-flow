@@ -181,10 +181,26 @@ export async function lookupFood(supabase, foodName) {
 // ── Per-ingredient calculation ────────────────────────────────────────────────
 
 /**
+ * Clean a USDA-style name into a human-readable label.
+ * "Beverages, Protein powder whey based" → "Protein powder whey based"
+ * "Chicken, breast, skinless, boneless, raw" → "chicken breast"
+ */
+function cleanFoodName(usdaName) {
+  if (!usdaName) return usdaName;
+  // Split on comma, take the most descriptive part (usually first 2 segments)
+  const parts = usdaName.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return usdaName.toLowerCase();
+  // Skip generic category prefixes
+  const skip = /^(beverages|cereals|dairy|fats|fruits|legumes|meals|nuts|snacks|soups|sweets|vegetables|spices|baked|fast foods|restaurant)/i;
+  const useful = parts.filter(p => !skip.test(p));
+  return (useful.length > 0 ? useful.slice(0, 2).join(' ') : parts.slice(0, 2).join(' ')).toLowerCase();
+}
+
+/**
  * Full pipeline for one ingredient string:
  *   parse → DB lookup → unit conversion → arithmetic
  *
- * Returns an ingredientNutrition object or null if unresolvable.
+ * Returns { nutrition, cleanLabel } or null if unresolvable.
  */
 export async function calculateIngredient(supabase, ingredientStr) {
   const parsed = parseIngredient(ingredientStr);
@@ -198,18 +214,20 @@ export async function calculateIngredient(supabase, ingredientStr) {
   if (!weightG || weightG <= 0) return null;
 
   const scale = weightG / 100;
+  const roundedWeight = Math.round(weightG);
+  const label = `${cleanFoodName(foodRow.name)} ${roundedWeight}g`;
+
   return {
-    item: ingredientStr,
-    weightG: round1(weightG),
-    calories: round1(scale * (Number(foodRow.calories_per_100g) || 0)),
-    proteinG: round1(scale * (Number(foodRow.protein_per_100g) || 0)),
-    carbsG: round1(scale * (Number(foodRow.carbs_per_100g) || 0)),
-    fatsG: round1(scale * (Number(foodRow.fats_per_100g) || 0)),
+    item: label,
+    weightG: roundedWeight,
+    calories: Math.round(scale * (Number(foodRow.calories_per_100g) || 0)),
+    proteinG: Math.round(scale * (Number(foodRow.protein_per_100g) || 0)),
+    carbsG: Math.round(scale * (Number(foodRow.carbs_per_100g) || 0)),
+    fatsG: Math.round(scale * (Number(foodRow.fats_per_100g) || 0)),
     _source: foodRow.name,
+    _cleanLabel: label,
   };
 }
-
-function round1(n) { return Math.round(n * 10) / 10; }
 
 // ── Meal & plan recalculation ────────────────────────────────────────────────
 
@@ -225,16 +243,19 @@ export async function recalculateMeal(supabase, meal) {
 
   const aiIngNutrition = Array.isArray(meal.ingredientNutrition) ? meal.ingredientNutrition : [];
   const calculated = [];
+  const cleanIngredients = [];
 
   for (let i = 0; i < ingredients.length; i++) {
     const calc = await calculateIngredient(supabase, ingredients[i]);
     if (calc) {
       calculated.push(calc);
+      cleanIngredients.push(calc._cleanLabel || calc.item);
     } else if (aiIngNutrition[i]) {
-      // Keep AI's value for this ingredient but mark it
       calculated.push({ ...aiIngNutrition[i], _source: 'ai_fallback' });
+      cleanIngredients.push(ingredients[i]); // keep original
+    } else {
+      cleanIngredients.push(ingredients[i]); // keep original
     }
-    // If neither works, ingredient is unresolved and omitted from nutrition
   }
 
   if (calculated.length === 0) return meal; // can't improve, return as-is
@@ -246,11 +267,12 @@ export async function recalculateMeal(supabase, meal) {
 
   return {
     ...meal,
+    ingredients: cleanIngredients,
     calories: totalCal,
     protein: `${totalProt}g`,
     carbs: `${totalCarbs}g`,
     fats: `${totalFats}g`,
-    ingredientNutrition: calculated.map(({ _source, ...rest }) => rest),
+    ingredientNutrition: calculated.map(({ _source, _cleanLabel, ...rest }) => rest),
   };
 }
 

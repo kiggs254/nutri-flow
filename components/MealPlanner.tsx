@@ -483,9 +483,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                     <div class="meal-col">
                       <div class="meal-type">${type}</div>
                       <div class="meal-name">${meal.name}</div>
-                      <div class="ingredients">${meal.ingredientNutrition?.length
-                        ? meal.ingredientNutrition.map(ing => `${ing.item} (${Math.round(ing.calories)} kcal)`).join(', ')
-                        : meal.ingredients.join(', ')}</div>
+                      <div class="ingredients">${meal.ingredients.join(', ')}</div>
                       <div class="macros">${meal.calories}kcal | P:${meal.protein} C:${meal.carbs} F:${meal.fats}</div>
                     </div>
                   `;
@@ -526,7 +524,6 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   
   const MealItem: React.FC<{ meal: Meal, dayIndex: number, mealType: any, snackIndex?: number }> = ({ meal, dayIndex, mealType, snackIndex }) => {
     if (!meal) return null;
-    const ingNutrition = meal.ingredientNutrition;
     return (
       <div className="mb-3 p-3 bg-white rounded-md border">
         {isEditing ? (
@@ -537,20 +534,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
         ) : (
           <>
             <p className="font-semibold text-slate-700">{meal.name}</p>
-            {ingNutrition && ingNutrition.length > 0 ? (
-              <div className="mt-1.5 space-y-0.5">
-                {ingNutrition.map((ing, idx) => (
-                  <div key={idx} className="flex items-baseline gap-2 text-xs">
-                    <span className="text-slate-700 font-medium">{ing.item}</span>
-                    <span className="text-slate-400 tabular-nums">
-                      {Math.round(ing.calories)} kcal &middot; P {ing.proteinG}g &middot; C {ing.carbsG}g &middot; F {ing.fatsG}g
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">{meal.ingredients?.join(', ')}</p>
-            )}
+            <p className="text-xs text-slate-500">{meal.ingredients?.join(', ')}</p>
           </>
         )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mt-2 pt-2 border-t border-slate-100">
