@@ -11,6 +11,29 @@ interface MealPlannerProps {
   selectedClient: Client | null;
 }
 
+const loadingMoments = [
+  {
+    title: 'Scanning the verified food universe',
+    description: 'Pulling candidate proteins, carbs, vegetables, fruits, and fats from your database.',
+    accent: 'from-emerald-400 via-lime-300 to-amber-200',
+  },
+  {
+    title: 'Balancing calories, macros, and variety',
+    description: 'Shaping days that hit targets without repeating the same safe foods over and over.',
+    accent: 'from-sky-400 via-cyan-300 to-indigo-300',
+  },
+  {
+    title: 'Pressure-testing the plan',
+    description: 'Checking repetition, diversity, ingredient matches, and nutrition consistency.',
+    accent: 'from-fuchsia-400 via-rose-300 to-orange-200',
+  },
+  {
+    title: 'Plating the final week',
+    description: 'Turning all that reasoning into a 7-day plan that feels thoughtful, not robotic.',
+    accent: 'from-[#8C3A36] via-[#C96A4A] to-[#F3D38B]',
+  },
+];
+
 // -- Helper Components --
 
 const EditableField: React.FC<{
@@ -96,6 +119,7 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
   } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [planToDelete, setPlanToDelete] = useState<string | null>(null);
+  const [loadingMomentIndex, setLoadingMomentIndex] = useState(0);
 
   useEffect(() => {
     if (selectedClient) {
@@ -181,6 +205,19 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
       setPlanAnalytics(null);
     }
   }, [plan]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingMomentIndex(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setLoadingMomentIndex(prev => (prev + 1) % loadingMoments.length);
+    }, 2200);
+
+    return () => window.clearInterval(interval);
+  }, [loading]);
 
   const fetchSavedPlans = async (clientId: string) => {
     const { data } = await supabase.from('meal_plans').select('*').eq('client_id', clientId).order('created_at', { ascending: false });
@@ -572,6 +609,8 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
       </div>
     );
   };
+
+  const activeLoadingMoment = loadingMoments[loadingMomentIndex];
   
   return (
     <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
@@ -692,7 +731,142 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
       </div>
 
       <div className="lg:col-span-2 bg-white p-2 sm:p-6 rounded-xl shadow-sm border border-slate-200 min-h-[600px]">
-        {loading && <div className="flex flex-col items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-[#8C3A36]"/><p className="mt-4 text-slate-500">Generating your plan...</p></div>}
+        {loading && (
+          <div className="relative flex h-full min-h-[560px] items-center justify-center overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,_rgba(143,170,65,0.18),_transparent_35%),linear-gradient(135deg,_#fffaf6_0%,_#fff_45%,_#f8fafc_100%)] px-4 py-8 sm:px-8">
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute -left-10 top-10 h-40 w-40 rounded-full bg-[#8FAA41]/15 blur-3xl animate-pulse" />
+              <div className="absolute right-0 top-1/4 h-56 w-56 rounded-full bg-[#8C3A36]/10 blur-3xl animate-pulse" style={{ animationDelay: '0.8s' }} />
+              <div className="absolute bottom-0 left-1/3 h-48 w-48 rounded-full bg-amber-200/30 blur-3xl animate-pulse" style={{ animationDelay: '1.6s' }} />
+              <div className="absolute left-8 top-8 h-2.5 w-2.5 rounded-full bg-[#8FAA41] animate-ping" />
+              <div className="absolute right-16 top-20 h-2 w-2 rounded-full bg-[#8C3A36] animate-ping" style={{ animationDelay: '0.5s' }} />
+              <div className="absolute bottom-24 right-10 h-3 w-3 rounded-full bg-amber-400 animate-ping" style={{ animationDelay: '1s' }} />
+            </div>
+
+            <div className="relative z-10 w-full max-w-3xl">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/70 bg-white/75 px-5 py-4 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.35em] text-[#8C3A36]/70">Meal plan in progress</p>
+                  <h3 className="mt-2 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                    Building something worth the wait
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 shadow-inner">
+                  <Loader2 className="h-4 w-4 animate-spin text-[#8C3A36]" />
+                  Deep nutrition reasoning active
+                </div>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-[1.25fr_0.95fr]">
+                <div className="relative overflow-hidden rounded-[30px] border border-white/80 bg-slate-950 p-6 text-white shadow-[0_24px_100px_rgba(15,23,42,0.28)]">
+                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${activeLoadingMoment.accent}`} />
+                  <div className="absolute -right-14 -top-14 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+                  <div className="absolute bottom-0 left-0 h-28 w-28 rounded-full bg-[#8FAA41]/20 blur-2xl" />
+
+                  <div className="relative flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-white/50">Current phase</p>
+                      <h4 className="mt-3 text-2xl font-black leading-tight">{activeLoadingMoment.title}</h4>
+                      <p className="mt-3 max-w-lg text-sm leading-6 text-white/75">{activeLoadingMoment.description}</p>
+                    </div>
+                    <div className="relative flex h-20 w-20 items-center justify-center rounded-[26px] border border-white/15 bg-white/5">
+                      <div className="absolute h-14 w-14 rounded-full border border-[#8FAA41]/30 animate-ping" />
+                      <ChefHat className="h-9 w-9 text-[#F3D38B]" />
+                    </div>
+                  </div>
+
+                  <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                    {loadingMoments.map((moment, idx) => {
+                      const active = idx === loadingMomentIndex;
+                      const completed = idx < loadingMomentIndex;
+                      return (
+                        <div
+                          key={moment.title}
+                          className={`rounded-2xl border px-4 py-3 transition-all duration-500 ${
+                            active
+                              ? 'border-white/25 bg-white/12 shadow-lg shadow-[#8FAA41]/10'
+                              : completed
+                                ? 'border-emerald-400/30 bg-emerald-400/10'
+                                : 'border-white/10 bg-white/[0.04]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${active ? 'bg-white text-slate-950' : completed ? 'bg-emerald-300 text-slate-950' : 'bg-white/10 text-white/60'}`}>
+                              {completed ? '✓' : idx + 1}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-white/90">{moment.title}</p>
+                              <p className="text-[11px] text-white/55">{active ? 'Live now' : completed ? 'Locked in' : 'Queued next'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold text-white/70">
+                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2">DB candidates</div>
+                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2">RAG retrieval</div>
+                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2">Macro balancing</div>
+                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2">Variety checks</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-5">
+                  <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-400">Live kitchen board</p>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#8C3A36]">
+                        <span className="h-2 w-2 rounded-full bg-[#8C3A36] animate-pulse" />
+                        thinking hard
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {[
+                        { icon: Brain, label: 'Interpreting client rules', color: 'text-violet-600', done: true },
+                        { icon: BarChart3, label: 'Balancing kcal + macro targets', color: 'text-sky-600', done: true },
+                        { icon: PieChart, label: 'Reducing boring repetition', color: 'text-amber-500', done: loadingMomentIndex >= 1 },
+                        { icon: Calendar, label: 'Sequencing a full 7-day rhythm', color: 'text-emerald-600', done: loadingMomentIndex >= 2 },
+                      ].map((item, idx) => {
+                        const Icon = item.icon;
+                        return (
+                          <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-3">
+                            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-sm ${item.color}`}>
+                              <Icon className={`h-5 w-5 ${item.done ? 'opacity-100' : 'opacity-50'}`} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-slate-800">{item.label}</p>
+                              <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className={`h-full rounded-full bg-gradient-to-r ${idx <= loadingMomentIndex ? 'from-[#8FAA41] to-[#8C3A36]' : 'from-slate-300 to-slate-300'} transition-all duration-700`}
+                                  style={{ width: idx < loadingMomentIndex ? '100%' : idx === loadingMomentIndex ? '68%' : '18%' }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-[28px] border border-[#8FAA41]/20 bg-[linear-gradient(135deg,rgba(143,170,65,0.12),rgba(255,255,255,0.92),rgba(140,58,54,0.08))] p-5 shadow-[0_18px_50px_rgba(143,170,65,0.08)]">
+                    <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-500">While you wait</p>
+                    <div className="mt-4 space-y-3 text-sm text-slate-700">
+                      <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
+                        <p className="font-bold text-slate-900">What makes this slower?</p>
+                        <p className="mt-1 leading-6 text-slate-600">We’re not just generating text — we’re matching foods, balancing rules, and checking repetition across the full week.</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
+                        <p className="font-bold text-slate-900">Why it feels better</p>
+                        <p className="mt-1 leading-6 text-slate-600">More verified foods, fewer lazy repeats, and stronger alignment with targets like kcal/day and protein/day.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {error && <div className="flex flex-col items-center justify-center h-full p-4 text-center"><AlertCircle className="w-10 h-10 text-red-500 mb-4"/><p className="text-red-700 font-semibold">Error Generating Plan</p><p className="text-sm text-slate-600 mt-2">{error}</p></div>}
         {!loading && !error && !plan && <div className="flex flex-col items-center justify-center h-full text-center p-4"><div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4"><FileText className="w-10 h-10 text-slate-300"/></div><h3 className="text-xl font-bold text-slate-800">Your Plan Will Appear Here</h3><p className="text-slate-500 max-w-sm mt-2">Use the generator on the left to create a new 7-day meal plan for {selectedClient.name}.</p></div>}
         
