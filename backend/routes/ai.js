@@ -22,6 +22,87 @@ function getAccessToken(req) {
   return a?.startsWith('Bearer ') ? a.slice(7) : '';
 }
 
+function buildRuleInstructionBlock(tdee) {
+  const lines = [];
+  const rules = tdee?.mealRules;
+  if (!rules) return '';
+
+  if (rules.perMealTargets?.proteinG) lines.push(`- Minimum protein per main meal: ${rules.perMealTargets.proteinG}g.`);
+  if (rules.perMealTargets?.carbsG) lines.push(`- Target carbs per main meal: ${rules.perMealTargets.carbsG}g.`);
+  if (rules.perMealTargets?.fatsG) lines.push(`- Target fats per main meal: ${rules.perMealTargets.fatsG}g.`);
+  if (rules.perMealTargets?.calories) lines.push(`- Target calories per main meal: about ${rules.perMealTargets.calories} kcal.`);
+  if (rules.maxSameMealNamePerWeek != null) lines.push(`- Do not repeat the same meal name more than ${rules.maxSameMealNamePerWeek} time(s) per week.`);
+  if (rules.maxSamePrimaryIngredientPerWeek != null) lines.push(`- Do not use the same main ingredient more than ${rules.maxSamePrimaryIngredientPerWeek} time(s) per week.`);
+  if (rules.minUniquePrimaryIngredientsPerWeek != null) lines.push(`- Use at least ${rules.minUniquePrimaryIngredientsPerWeek} distinct main ingredients across the week.`);
+  if (rules.discourageBreadAsPrimary) lines.push('- Bread/toast/rolls should not be the primary ingredient except when explicitly required.');
+
+  return lines.length ? `MEAL COMPOSITION RULES (mandatory):\n${lines.join('\n')}` : '';
+}
+
+async function fetchFoodsForCategory(supabase, patterns, limit = 10) {
+  const rows = [];
+  for (const pattern of patterns) {
+    const { data } = await supabase
+      .from('nutrition_foods')
+      .select('name, category, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g')
+      .or(`category.ilike.%${pattern}%,name.ilike.%${pattern}%`)
+      .not('calories_per_100g', 'is', null)
+      .limit(limit);
+    if (Array.isArray(data)) rows.push(...data);
+    if (rows.length >= limit) break;
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const key = String(row.name || '').toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(row);
+    if (deduped.length >= limit) break;
+  }
+  return deduped;
+}
+
+function formatFoodRows(label, rows) {
+  if (!rows?.length) return '';
+  return `${label}:\n` + rows.map((r) => {
+    const kcal = r.calories_per_100g ?? '?';
+    const p = r.protein_per_100g ?? '?';
+    const c = r.carbs_per_100g ?? '?';
+    const f = r.fats_per_100g ?? '?';
+    return `- ${r.name} (${r.category || 'uncategorized'}) — per 100g: ${kcal} kcal, P ${p}g, C ${c}g, F ${f}g`;
+  }).join('\n');
+}
+
+async function buildVerifiedFoodCandidateBlock(accessToken, params) {
+  try {
+    const supabase = createUserSupabase(accessToken);
+    const [proteins, carbs, vegetables, fruits, fats] = await Promise.all([
+      fetchFoodsForCategory(supabase, ['poultry', 'beef', 'lamb', 'fish', 'egg', 'legume', 'bean', 'seafood', 'meat'], 12),
+      fetchFoodsForCategory(supabase, ['rice', 'potato', 'yam', 'oat', 'grain', 'cereal', 'bread', 'pasta', 'maize', 'corn'], 12),
+      fetchFoodsForCategory(supabase, ['vegetable', 'greens', 'broccoli', 'spinach', 'kale', 'carrot', 'cabbage', 'tomato'], 12),
+      fetchFoodsForCategory(supabase, ['fruit', 'banana', 'apple', 'orange', 'berries', 'papaya', 'avocado'], 8),
+      fetchFoodsForCategory(supabase, ['nut', 'seed', 'oil', 'avocado', 'olive'], 8),
+    ]);
+
+    const blocks = [
+      formatFoodRows('VERIFIED PROTEIN OPTIONS', proteins),
+      formatFoodRows('VERIFIED CARB / STARCH OPTIONS', carbs),
+      formatFoodRows('VERIFIED VEGETABLE OPTIONS', vegetables),
+      formatFoodRows('VERIFIED FRUIT OPTIONS', fruits),
+      formatFoodRows('VERIFIED FAT OPTIONS', fats),
+    ].filter(Boolean);
+
+    return blocks.length
+      ? 'DIVERSE VERIFIED FOOD CANDIDATES (prioritize these foods to avoid repetitive plans):\n' + blocks.join('\n\n')
+      : '';
+  } catch (error) {
+    console.warn('[MealPlan] candidate food block failed:', error.message);
+    return '';
+  }
+}
+
 function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
   const lines = [
     `DAILY CALORIE TARGET (mandatory): ${tdee.dailyCalories} kcal/day.`,
@@ -40,11 +121,16 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
     if (tdee.macroTargets.carbsG) lines.push(`- Carbs: ${tdee.macroTargets.carbsG}g/day`);
     if (tdee.macroTargets.fatsG) lines.push(`- Fats: ${tdee.macroTargets.fatsG}g/day`);
   }
+  const rulesBlock = buildRuleInstructionBlock(tdee);
+  if (rulesBlock) {
+    lines.push('', rulesBlock);
+  }
   lines.push(
     '',
     'Each day totalCalories must be within 5% of this target unless medically contradicted by the records.',
     'Meal calories and macros must be consistent with ingredient amounts using the VERIFIED NUTRITION DATA below when those foods appear.',
     'Prefer foods that can be directly matched to the verified food database; keep ingredient names simple and database-friendly.',
+    'Use a broad variety of verified foods across the week. Avoid repetitive bread-based meals unless explicitly requested.',
     'Do not ignore the calorie target, macro targets, or nutritionist instructions in favor of generic estimates.'
   );
   if (ragContext) {
@@ -111,6 +197,8 @@ Your output must be a single valid JSON object matching the provided schema exac
   BOTH calorie and macro targets simultaneously.
 - Choose ingredient portion weights to hit the targets. If a draft day falls short, scale up
   the largest calorie-dense ingredient proportionally. If it overshoots, scale it down.
+- Across the full week, maximize meal variety. Do not collapse into repeated bread-based meals.
+- Use diverse primary proteins and starches across the 7 days.
 
 ## INGREDIENT FORMAT — CRITICAL
 
@@ -121,6 +209,7 @@ Your output must be a single valid JSON object matching the provided schema exac
 - When VERIFIED NUTRITION DATA is provided, use those foods and their per-100g values to
   estimate accurate portion sizes and calorie/macro totals.
 - For liquids/oils, include volume or weight (e.g., "15ml olive oil", "200ml milk").
+- Prefer complete meals built from protein + vegetable + starch/fruit where clinically appropriate.
 
 ## HEALTH & SAFETY
 
@@ -156,10 +245,12 @@ function buildThinkingUserPrompt(params, tdee, ragContext, excludedMeals) {
         tdee.macroTargets.carbsG ? `\n- Carbs: ${tdee.macroTargets.carbsG}g/day` : ''}${
         tdee.macroTargets.fatsG ? `\n- Fats: ${tdee.macroTargets.fatsG}g/day` : ''}\n`
     : '';
+  const rulesBlock = buildRuleInstructionBlock(tdee);
 
   return `DAILY CALORIE TARGET: ${tdee.dailyCalories} kcal/day  \u2190 HIT THIS WITHIN 5%
 Target source: ${tdee.source}${tdee.bmr ? `\nBMR: ${tdee.bmr} kcal/day` : ''}${tdee.tdee ? `\nTDEE before goal adjustment: ${tdee.tdee} kcal/day (activity \xd7${tdee.activityMultiplier})` : ''}${tdee.goalAdjustment ? `\nGoal adjustment: ${tdee.goalAdjustment > 0 ? '+' : ''}${tdee.goalAdjustment} kcal/day` : ''}
 ${macroBlock}
+${rulesBlock ? `\n${rulesBlock}\n` : ''}
 ${ragContext}
 
 ---
@@ -355,6 +446,10 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
         ragMeta = { error: e.message };
       }
     }
+    const candidateFoodBlock = accessToken ? await buildVerifiedFoodCandidateBlock(accessToken, params) : '';
+    if (candidateFoodBlock) {
+      ragContext = [ragContext, candidateFoodBlock].filter(Boolean).join('\n\n');
+    }
     const nutritionPreamble = buildMealPlanNutritionPreamble(params, tdee, ragContext);
 
     const systemInstruction = `You are an expert nutritionist creating a 7-day meal plan.
@@ -374,6 +469,7 @@ router.post('/generate-meal-plan', authenticate, async (req, res) => {
   8. Snacks are a SEPARATE section from main meals and MUST be returned under "snacks" (array).
   9. Snacks MUST include full nutrition + instructions, same as other meals.
   10. Be concise.
+  11. Use diverse primary ingredients across the week; avoid repeating the same meal or making bread the base of most meals.
   
   MANDATORY NUTRITIONAL DATA FOR EVERY MEAL:
   - calories: Must be a positive integer (e.g., 350, 450, 520)
@@ -594,7 +690,7 @@ JSON OUTPUT FORMAT (MANDATORY):
       console.warn('[MealPlan] Server-side nutrition recalculation failed, using AI values:', recalcErr.message);
     }
 
-    const nutritionValidation = validatePlanNutrition(plan, tdee.dailyCalories);
+    const nutritionValidation = validatePlanNutrition(plan, tdee);
     res.json({
       plan,
       nutritionTargets: tdee,
@@ -643,6 +739,10 @@ router.post('/refine-meal-plan', authenticate, async (req, res) => {
       } catch (e) {
         ragMeta = { error: e.message };
       }
+    }
+    const candidateFoodBlock = refineAccessToken ? await buildVerifiedFoodCandidateBlock(refineAccessToken, params) : '';
+    if (candidateFoodBlock) {
+      ragContext = [ragContext, candidateFoodBlock].filter(Boolean).join('\n\n');
     }
     // Build prompts and call the appropriate provider
     const refineSystemInstruction = buildThinkingSystemInstruction();
@@ -753,7 +853,7 @@ JSON OUTPUT FORMAT (MANDATORY):
       console.warn('[MealPlan] Server-side nutrition recalculation failed on refine, using AI values:', recalcErr.message);
     }
 
-    const nutritionValidation = validatePlanNutrition(refinedPlan, tdee.dailyCalories);
+    const nutritionValidation = validatePlanNutrition(refinedPlan, tdee);
     res.json({
       plan: refinedPlan,
       nutritionTargets: tdee,
@@ -784,7 +884,7 @@ router.post('/recalculate-meal-plan', authenticate, async (req, res) => {
     let nutritionValidation;
     if (params) {
       nutritionTargets = computeDailyCalorieTarget(params);
-      nutritionValidation = validatePlanNutrition(recalculatedPlan, nutritionTargets.dailyCalories);
+      nutritionValidation = validatePlanNutrition(recalculatedPlan, nutritionTargets);
     }
 
     res.json({

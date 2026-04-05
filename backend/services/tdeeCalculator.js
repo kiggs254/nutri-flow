@@ -73,16 +73,62 @@ export function parseMacroTargets(text) {
   const s = String(text);
   const result = {};
 
-  // Match patterns like "150g protein", "130g carb/day", "50g of fat per day"
-  const proteinMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?protein/i);
-  const carbMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?carb(?:s|ohydrate)?/i);
-  const fatMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?fat/i);
+  // Match patterns like "150g protein per day", but ignore explicit per-meal rules.
+  const proteinMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?protein(?!\s*(?:per|each|every)\s*meal)/i);
+  const carbMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?carb(?:s|ohydrate)?(?!\s*(?:per|each|every)\s*meal)/i);
+  const fatMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?fat(?!\s*(?:per|each|every)\s*meal)/i);
 
   if (proteinMatch) result.proteinG = parseInt(proteinMatch[1], 10);
   if (carbMatch) result.carbsG = parseInt(carbMatch[1], 10);
   if (fatMatch) result.fatsG = parseInt(fatMatch[1], 10);
 
   return Object.keys(result).length > 0 ? result : null;
+}
+
+function parsePerMealTargets(text) {
+  if (!text) return null;
+  const s = String(text);
+  const result = {};
+
+  const proteinMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?protein\s*(?:per|each|every)\s*meal/i);
+  const carbMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?carb(?:s|ohydrate)?\s*(?:per|each|every)\s*meal/i);
+  const fatMatch = s.match(/(\d{1,4})\s*g\s*(?:of\s+)?fat\s*(?:per|each|every)\s*meal/i);
+  const kcalMatch = s.match(/(\d{2,4})\s*(?:kcal|cal|calories?)\s*(?:per|each|every)\s*meal/i);
+
+  if (proteinMatch) result.proteinG = parseInt(proteinMatch[1], 10);
+  if (carbMatch) result.carbsG = parseInt(carbMatch[1], 10);
+  if (fatMatch) result.fatsG = parseInt(fatMatch[1], 10);
+  if (kcalMatch) result.calories = parseInt(kcalMatch[1], 10);
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function parseRepeatLimits(text) {
+  if (!text) return null;
+  const s = String(text);
+  const result = {};
+
+  const sameMealMatch = s.match(/(?:same\s+meal|repeat(?:ed)?\s+meal).{0,30}?(\d{1,2})\s*(?:time|x)/i);
+  const sameIngredientMatch = s.match(/(?:same\s+(?:main\s+)?ingredient|same\s+protein).{0,30}?(\d{1,2})\s*(?:time|x)/i);
+
+  if (sameMealMatch) result.maxSameMealNamePerWeek = parseInt(sameMealMatch[1], 10);
+  if (sameIngredientMatch) result.maxSamePrimaryIngredientPerWeek = parseInt(sameIngredientMatch[1], 10);
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+export function parseMealPlanRules(params = {}) {
+  const combinedText = [params.customInstructions, params.nutritionistNotes].filter(Boolean).join('\n');
+  const perMealTargets = parsePerMealTargets(combinedText) || null;
+  const repeatLimits = parseRepeatLimits(combinedText) || {};
+
+  return {
+    perMealTargets,
+    maxSameMealNamePerWeek: repeatLimits.maxSameMealNamePerWeek ?? 1,
+    maxSamePrimaryIngredientPerWeek: repeatLimits.maxSamePrimaryIngredientPerWeek ?? 2,
+    minUniquePrimaryIngredientsPerWeek: 5,
+    discourageBreadAsPrimary: true,
+  };
 }
 
 /**
@@ -104,6 +150,7 @@ export function computeDailyCalorieTarget(params) {
     parseMacroTargets(params.customInstructions) ||
     parseMacroTargets(params.nutritionistNotes) ||
     null;
+  const mealRules = parseMealPlanRules(params);
 
   const fromInstructions =
     parseExplicitCalorieTarget(params.customInstructions) ||
@@ -117,6 +164,7 @@ export function computeDailyCalorieTarget(params) {
       activityMultiplier: null,
       goalAdjustment: null,
       macroTargets,
+      mealRules,
       source: 'explicit_instruction'
     };
   }
@@ -134,6 +182,7 @@ export function computeDailyCalorieTarget(params) {
       activityMultiplier: null,
       goalAdjustment: null,
       macroTargets,
+      mealRules,
       source: 'fallback_default',
       note: 'Insufficient metrics for BMR; using 2000 kcal default. Enter BMR, age, weight, and height for accuracy.'
     };
@@ -152,6 +201,7 @@ export function computeDailyCalorieTarget(params) {
     activityMultiplier: mult,
     goalAdjustment: adj,
     macroTargets,
+    mealRules,
     source: 'computed_tdee'
   };
 }
