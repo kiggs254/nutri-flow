@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, ChefHat, RefreshCw, Save, Upload, FileText, Edit2, Check, ShoppingCart, Printer, BarChart3, ChevronDown, ChevronUp, Calendar, AlertCircle, Trash2, Brain, PieChart, Copy, X } from 'lucide-react';
-import { generateMealPlan, refineMealPlan } from '../services/geminiService';
+import { generateMealPlan, recalculateMealPlan, refineMealPlan } from '../services/geminiService';
 import { DailyPlan, MealGenParams, Client, SavedMealPlan, Meal } from '../types';
 import { supabase } from '../services/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Pie, Cell, Legend } from 'recharts';
@@ -307,7 +307,22 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
     if (!plan || !selectedClient) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('meal_plans').insert({ client_id: selectedClient.id, plan_data: plan, day_label: planLabel });
+      const recalculated = await recalculateMealPlan(params || undefined, plan);
+      const planToSave = recalculated.plan?.length ? recalculated.plan : plan;
+
+      setPlan(planToSave);
+
+      if (recalculated.nutritionValidation?.warnings?.length) {
+        showToast(
+          `Database nutrition check: ${recalculated.nutritionValidation.warnings.length} notice(s). Review ingredient matches before sharing.`,
+          'warning',
+          9000
+        );
+      } else {
+        showToast('Plan recalculated from the food database.', 'success', 2500);
+      }
+
+      const { error } = await supabase.from('meal_plans').insert({ client_id: selectedClient.id, plan_data: planToSave, day_label: planLabel });
       if (error) throw error;
       showToast('Plan saved!', 'success');
       fetchSavedPlans(selectedClient.id);
@@ -695,6 +710,9 @@ export const MealPlanner: React.FC<MealPlannerProps> = ({ selectedClient }) => {
                         {saving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin"/> : <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4"/>} {saving ? 'Saving...' : <span className="hidden sm:inline">Save Plan</span>}
                     </button>
                 </div>
+            </div>
+            <div className="mx-4 sm:mx-0 rounded-lg border border-[#8FAA41]/30 bg-[#F6FAEA] px-3 py-2 text-xs sm:text-sm text-slate-700">
+              Ingredient gram weights and meal macros are recalculated from the verified food database when a matching food entry is found. Saving the plan runs that recalculation again for accuracy.
             </div>
             <div className="px-4 sm:px-0">
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4">

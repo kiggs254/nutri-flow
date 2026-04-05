@@ -13,6 +13,27 @@
 const UNIT_RE =
   /^([\d]+(?:[./][\d]+)?)\s*(g|grams?|kg|ml|milliliters?|l|liters?|cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|pcs?|pieces?|slices?|servings?|large|medium|small|whole)?\s*(?:of\s+)?(.+)$/i;
 
+const INGREDIENT_ALIASES = {
+  oatmeal: ['rolled oats', 'oats'],
+  oats: ['rolled oats', 'oatmeal'],
+  porridge: ['oatmeal', 'rolled oats'],
+  'greek yoghurt': ['greek yogurt'],
+  yoghurt: ['yogurt'],
+  'yoghurt plain': ['yogurt plain'],
+  'mince beef': ['ground beef'],
+  'mince meat': ['ground beef'],
+  capsicum: ['bell pepper'],
+  coriander: ['cilantro'],
+  rocket: ['arugula'],
+  pawpaw: ['papaya'],
+  'maize meal': ['cornmeal'],
+  ugali: ['cornmeal', 'maize meal'],
+  'sukuma wiki': ['collard greens', 'kale'],
+  ndengu: ['mung beans'],
+};
+
+const PREPARATION_WORDS_RE = /\b(raw|cooked|boiled|steamed|grilled|fried|baked|roasted|fresh|plain|unsalted|salted|skinless|boneless|lean|low[- ]fat|reduced[- ]fat|whole|homemade|organic)\b/gi;
+
 export function parseIngredient(str) {
   if (!str || typeof str !== 'string') return null;
   const s = str.trim();
@@ -65,6 +86,10 @@ export function resolveWeightG(parsed, foodRow) {
     if (pm) return pm;
   }
 
+  if (foodRow?.serving_size_g && /serving|pcs|piece|slice|cup|tbsp|tsp/i.test(unit)) {
+    return qty * Number(foodRow.serving_size_g);
+  }
+
   if (unit === 'tbsp') return qty * 15;
   if (unit === 'tsp') return qty * 5;
   if (unit === 'cup') return qty * 240;
@@ -100,9 +125,56 @@ function findPieceWeight(food) {
   return null;
 }
 
+function normalizeFoodSearchText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[()]/g, ' ')
+    .replace(/\bwith\b.*$/i, '')
+    .replace(/\band\b/gi, ' ')
+    .replace(PREPARATION_WORDS_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function singularizeLastWord(text) {
+  const parts = text.split(' ').filter(Boolean);
+  if (!parts.length) return text;
+  const last = parts[parts.length - 1];
+  if (last.endsWith('ies') && last.length > 3) {
+    parts[parts.length - 1] = `${last.slice(0, -3)}y`;
+    return parts.join(' ');
+  }
+  if (last.endsWith('s') && !last.endsWith('ss') && last.length > 3) {
+    parts[parts.length - 1] = last.slice(0, -1);
+  }
+  return parts.join(' ');
+}
+
+function buildSearchVariants(foodName) {
+  const base = normalizeFoodSearchText(foodName);
+  if (!base) return [];
+
+  const variants = new Set([base, singularizeLastWord(base)]);
+  const commaStripped = base.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if (commaStripped) variants.add(commaStripped);
+
+  const aliasCandidates = Object.entries(INGREDIENT_ALIASES);
+  for (const [term, aliases] of aliasCandidates) {
+    if (base.includes(term)) {
+      for (const alias of aliases) variants.add(alias);
+    }
+  }
+
+  if (base.includes('egg')) variants.add('egg');
+  if (base.includes('eggs')) variants.add('egg');
+  if (base.includes('milk')) variants.add(base.replace(/whole |skim |low fat |low-fat |full cream /g, '').trim());
+
+  return Array.from(variants).filter(Boolean);
+}
+
 // ── Food lookup ──────────────────────────────────────────────────────────────
 
-const FOOD_COLS = 'id, name, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g, common_portions';
+const FOOD_COLS = 'id, name, calories_per_100g, protein_per_100g, carbs_per_100g, fats_per_100g, common_portions, serving_size_g, serving_description, metadata';
 
 /**
  * Score how well a DB food name matches the search term.
@@ -113,6 +185,7 @@ function matchScore(dbName, searchTerm) {
   const db = dbName.toLowerCase();
   const st = searchTerm.toLowerCase();
   // Exact start of name → best
+  if (db === st) return 120;
   if (db.startsWith(st)) return 100;
   // Starts after a comma-space ("Chicken, breast" searching "breast")
   if (db.includes(', ' + st)) return 80;
@@ -120,53 +193,74 @@ function matchScore(dbName, searchTerm) {
   const wordRe = new RegExp('\\b' + st.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
   if (wordRe.test(db)) return 60;
   // Substring match (worst — "rice" inside "price")
-  return 20;
+  let score = 20;
+
+  const searchTokens = st.split(/\s+/).filter(Boolean);
+  for (const tok of searchTokens) {
+    if (db.includes(tok)) score += 8;
+    else score -= 10;
+  }
+
+  if (/beverage|alcohol|restaurant|fast foods/i.test(db) && !/beverage|alcohol|restaurant|fast foods/i.test(st)) {
+    score -= 25;
+  }
+
+  return score;
 }
 
-export async function lookupFood(supabase, foodName) {
-  if (!foodName) return null;
-  const clean = foodName.toLowerCase().replace(/[,()]/g, '').replace(/\s+/g, ' ').trim();
+async function queryFoodCandidates(supabase, term) {
+  if (!term) return [];
 
-  // Strategy 1: name starts with the search term (best matches)
   let { data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
-    .ilike('name', `${clean}%`).limit(10);
+    .ilike('name', `${term}%`).limit(10);
 
-  // Strategy 2: search term after a comma ("Chicken, breast" for "breast")
   if (!data?.length) {
     ({ data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
-      .ilike('name', `%, ${clean}%`).limit(10));
+      .ilike('name', `%, ${term}%`).limit(10));
   }
 
-  // Strategy 3: contains anywhere (broad)
   if (!data?.length) {
     ({ data } = await supabase.from('nutrition_foods').select(FOOD_COLS)
-      .ilike('name', `%${clean}%`).limit(15));
+      .ilike('name', `%${term}%`).limit(15));
   }
 
-  // Strategy 4: try individual words (progressively fewer)
   if (!data?.length) {
-    const words = clean.split(' ').filter(w => w.length > 2);
+    const words = term.split(' ').filter(w => w.length > 2);
     for (let i = words.length; i >= 1; i--) {
       const partial = words.slice(0, i).join(' ');
       const r = await supabase.from('nutrition_foods').select(FOOD_COLS)
         .ilike('name', `${partial}%`).limit(10);
-      if (r.data?.length) { data = r.data; break; }
+      if (r.data?.length) return r.data;
       const r2 = await supabase.from('nutrition_foods').select(FOOD_COLS)
         .ilike('name', `%${partial}%`).limit(10);
-      if (r2.data?.length) { data = r2.data; break; }
+      if (r2.data?.length) return r2.data;
     }
   }
 
-  if (!data?.length) return null;
+  return data || [];
+}
 
-  // Rank by match quality, then by shortest name (most generic)
-  data.sort((a, b) => {
-    const sa = matchScore(a.name, clean);
-    const sb = matchScore(b.name, clean);
-    if (sb !== sa) return sb - sa; // higher score first
-    return a.name.length - b.name.length; // shorter name first
+export async function lookupFood(supabase, foodName) {
+  if (!foodName) return null;
+  const variants = buildSearchVariants(foodName);
+  const candidates = [];
+
+  for (const variant of variants) {
+    const data = await queryFoodCandidates(supabase, variant);
+    for (const row of data) {
+      candidates.push({ row, variant, score: matchScore(row.name, variant) });
+    }
+    if (candidates.some(c => c.score >= 100)) break;
+  }
+
+  if (!candidates.length) return null;
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.row.name.length - b.row.name.length;
   });
-  return data[0];
+
+  return candidates[0].row;
 }
 
 // ── Name cleaning ────────────────────────────────────────────────────────────
@@ -251,7 +345,22 @@ export async function calculateIngredient(supabase, ingredientStr, aiNutrition) 
     proteinG: Math.round(scale * (Number(foodRow.protein_per_100g) || 0)),
     carbsG: Math.round(scale * (Number(foodRow.carbs_per_100g) || 0)),
     fatsG: Math.round(scale * (Number(foodRow.fats_per_100g) || 0)),
+    dbMatched: true,
+    matchedFoodName: foodRow.name,
     _cleanLabel: label,
+  };
+}
+
+function buildUnmatchedIngredientEntry(label, aiNutrition, weightG, reason) {
+  return {
+    item: label,
+    weightG: Math.max(Math.round(weightG || 0), 0),
+    calories: Number(aiNutrition?.calories) || 0,
+    proteinG: Number(aiNutrition?.proteinG) || 0,
+    carbsG: Number(aiNutrition?.carbsG) || 0,
+    fatsG: Number(aiNutrition?.fatsG) || 0,
+    dbMatched: false,
+    unresolvedReason: reason,
   };
 }
 
@@ -276,18 +385,21 @@ export async function recalculateMeal(supabase, meal) {
     } else if (aiIng && aiIng.weightG > 0) {
       // DB lookup failed but AI provided weight — use AI values + format label
       const foodName = extractFoodName(aiIng.item || ingredients[i]);
-      cleanIngredients.push(`${foodName} ${Math.round(aiIng.weightG)}g`);
-      calculated.push(aiIng);
+      const label = `${foodName} ${Math.round(aiIng.weightG)}g`;
+      cleanIngredients.push(label);
+      calculated.push(buildUnmatchedIngredientEntry(label, aiIng, aiIng.weightG, 'No verified nutrition_foods match'));
     } else {
       // Last resort: try to parse and show whatever weight we have
       const parsed = parseIngredient(ingredients[i]);
       if (parsed) {
         const wg = resolveWeightG(parsed, null);
-        cleanIngredients.push(wg ? `${parsed.food} ${Math.round(wg)}g` : `${parsed.food} ${parsed.qty}${parsed.unit}`);
+        const label = wg ? `${parsed.food} ${Math.round(wg)}g` : `${parsed.food} ${parsed.qty}${parsed.unit}`;
+        cleanIngredients.push(label);
+        calculated.push(buildUnmatchedIngredientEntry(label, aiIng, wg, 'Unable to verify ingredient against food database'));
       } else {
         cleanIngredients.push(ingredients[i]);
+        calculated.push(buildUnmatchedIngredientEntry(ingredients[i], aiIng, aiIng?.weightG, 'Ingredient format could not be normalized'));
       }
-      if (aiIng) calculated.push(aiIng);
     }
   }
 

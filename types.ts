@@ -61,6 +61,9 @@ export interface IngredientNutrition {
   proteinG: number;
   carbsG: number;
   fatsG: number;
+  dbMatched?: boolean;
+  matchedFoodName?: string;
+  unresolvedReason?: string;
 }
 
 export interface Meal {

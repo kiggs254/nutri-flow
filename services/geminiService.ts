@@ -136,6 +136,27 @@ export const refineMealPlan = async (
   }
 };
 
+export const recalculateMealPlan = async (
+  params: MealGenParams | undefined,
+  plan: DailyPlan[]
+): Promise<MealPlanGenerationResult> => {
+  try {
+    const response = await callBackend('/api/ai/recalculate-meal-plan', {
+      params,
+      plan
+    });
+
+    return {
+      plan: response.plan || [],
+      nutritionTargets: response.nutritionTargets,
+      nutritionValidation: response.nutritionValidation,
+    };
+  } catch (error: any) {
+    console.error('Recalculate meal plan error:', error);
+    throw error;
+  }
+};
+
 export const analyzeFoodImage = async (
   base64Image: string | null, 
   mimeType: string | null, 

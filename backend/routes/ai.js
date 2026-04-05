@@ -44,6 +44,7 @@ function buildMealPlanNutritionPreamble(params, tdee, ragContext) {
     '',
     'Each day totalCalories must be within 5% of this target unless medically contradicted by the records.',
     'Meal calories and macros must be consistent with ingredient amounts using the VERIFIED NUTRITION DATA below when those foods appear.',
+    'Prefer foods that can be directly matched to the verified food database; keep ingredient names simple and database-friendly.',
     'Do not ignore the calorie target, macro targets, or nutritionist instructions in favor of generic estimates.'
   );
   if (ragContext) {
@@ -116,6 +117,7 @@ Your output must be a single valid JSON object matching the provided schema exac
 - Max 5 ingredients per meal.
 - Every ingredient MUST include a specific weight in grams: "150g chicken breast", "80g rice", "200ml milk".
 - Use common, recognizable food names (e.g. "chicken breast" not "poultry pectoralis").
+- Prefer ingredient names that are easy to match to a food database entry exactly or closely.
 - When VERIFIED NUTRITION DATA is provided, use those foods and their per-100g values to
   estimate accurate portion sizes and calorie/macro totals.
 - For liquids/oils, include volume or weight (e.g., "15ml olive oil", "200ml milk").
@@ -259,6 +261,11 @@ function normalizeEntryToDailyPlan(entry, excludedMeals = []) {
   }
 
   return { day, breakfast, lunch, dinner, snacks, totalCalories, summary: anyEntry.summary ?? '' };
+}
+
+async function recalculatePlanFromDatabase(plan) {
+  const serviceSupabase = createServiceSupabase();
+  return recalculatePlan(serviceSupabase, plan);
 }
 
 // Get available AI providers (based on configured API keys)
@@ -582,8 +589,7 @@ JSON OUTPUT FORMAT (MANDATORY):
     // Server-side recalculation: replace AI's calorie/macro numbers with
     // arithmetic derived from the nutrition_foods table (USDA data).
     try {
-      const serviceSupabase = createServiceSupabase();
-      plan = await recalculatePlan(serviceSupabase, plan);
+      plan = await recalculatePlanFromDatabase(plan);
     } catch (recalcErr) {
       console.warn('[MealPlan] Server-side nutrition recalculation failed, using AI values:', recalcErr.message);
     }
@@ -742,8 +748,7 @@ JSON OUTPUT FORMAT (MANDATORY):
     }
 
     try {
-      const serviceSupabase = createServiceSupabase();
-      refinedPlan = await recalculatePlan(serviceSupabase, refinedPlan);
+      refinedPlan = await recalculatePlanFromDatabase(refinedPlan);
     } catch (recalcErr) {
       console.warn('[MealPlan] Server-side nutrition recalculation failed on refine, using AI values:', recalcErr.message);
     }
@@ -762,6 +767,34 @@ JSON OUTPUT FORMAT (MANDATORY):
   } catch (error) {
     console.error('Refine meal plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to refine meal plan' });
+  }
+});
+
+router.post('/recalculate-meal-plan', authenticate, async (req, res) => {
+  try {
+    const { plan, params } = req.body || {};
+
+    if (!Array.isArray(plan) || plan.length === 0) {
+      return res.status(400).json({ error: 'plan must be a non-empty array' });
+    }
+
+    let recalculatedPlan = await recalculatePlanFromDatabase(plan);
+
+    let nutritionTargets;
+    let nutritionValidation;
+    if (params) {
+      nutritionTargets = computeDailyCalorieTarget(params);
+      nutritionValidation = validatePlanNutrition(recalculatedPlan, nutritionTargets.dailyCalories);
+    }
+
+    res.json({
+      plan: recalculatedPlan,
+      nutritionTargets,
+      nutritionValidation
+    });
+  } catch (error) {
+    console.error('Recalculate meal plan error:', error);
+    res.status(500).json({ error: error.message || 'Failed to recalculate meal plan' });
   }
 });
 

@@ -84,6 +84,13 @@ export function validatePlanNutrition(plan, targetDailyKcal, opts = {}) {
             `Meal "${m.name}": ingredientNutrition sum (${Math.round(ingCalSum)} kcal) vs meal calories (${kcal} kcal) — arithmetic mismatch >5%.`
           );
         }
+
+        const unresolved = m.ingredientNutrition.filter((ing) => ing?.dbMatched === false);
+        if (unresolved.length > 0) {
+          dayWarnings.push(
+            `Meal "${m.name}": ${unresolved.length} ingredient(s) could not be verified against the food database (${unresolved.map((ing) => ing.item).join(', ')}).`
+          );
+        }
       }
     }
 
